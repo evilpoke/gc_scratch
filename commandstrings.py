@@ -14,6 +14,7 @@ class Command(Enum):
 class OT_ANNOUNCE(Enum):
     ot_wire_id = "a:id"
     ot_seq = "seq:seq"
+    simple_ask = "askaskask"
     
 
 class SysCmdStrings:
@@ -52,13 +53,27 @@ class SysCmdStrings:
                 self.commandstructure["otann"] = OT_ANNOUNCE.ot_seq
                 self.commandstructure["payloadcontext"] = payloadcontext
                 self.commandstructure["payload"] = payload
+            elif otann == OT_ANNOUNCE.simple_ask:
+                assert payloadcontext == payload, "Invalid command"
+                assert isinstance(payloadcontext, int) , "Payload context needs to be an id"
+                self.commandstructure["otann"] = OT_ANNOUNCE.simple_ask
+                self.commandstructure["payloadcontext"] = payloadcontext
+                self.commandstructure["payload"] = None
             else:
                 raise ValueError("Invalid command")
         elif cmd == Command.performing_ot_give:
-            assert otann == OT_ANNOUNCE.ot_seq, "Invalid command"
-            self.commandstructure["otann"] = OT_ANNOUNCE.ot_seq
-            self.commandstructure["payloadcontext"] = payloadcontext
-            self.commandstructure["payload"] = payload
+            if otann == OT_ANNOUNCE.ot_seq:
+                self.commandstructure["otann"] = OT_ANNOUNCE.ot_seq
+                self.commandstructure["payloadcontext"] = payloadcontext
+                self.commandstructure["payload"] = payload
+            elif otann == OT_ANNOUNCE.simple_ask:
+                assert payloadcontext == payload, "Invalid command"
+                assert isinstance(payloadcontext, int) , "Payload context needs to be an id"
+                self.commandstructure["otann"] = OT_ANNOUNCE.simple_ask
+                self.commandstructure["payloadcontext"] = payloadcontext
+                self.commandstructure["payload"] = payload
+            else:
+                raise ValueError("Invalid command")
         elif cmd == Command.ready_to_receive_circuit_rows:
             assert otann == None and payloadcontext == None and payload == None, "Invalid command"
         elif cmd == Command.sending_circuit_rows:
@@ -70,4 +85,4 @@ class SysCmdStrings:
         self.commandstructure["cmd"] = cmd
         
         return self.commandstructure
-        
+    

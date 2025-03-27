@@ -148,17 +148,13 @@ class FunctionHardCoreB:
 
 
 class selectionofferer:
-    def __init__(self, io):
+    def __init__(self, io, askedid):
         self.b0 = None
         self.b1 = None
         self.io = io
         
-        initmsg = io.receive(initmsg)
-        initmsg = json.loads(initmsg)
-        assert initmsg["cmd"] == Command.performing_ot_ask, "No OT ask"
-        assert initmsg["otann"] == OT_ANNOUNCE.ot_wire_id, "No asking for wire id"
         
-        self.askedid = initmsg["payloadcontext"]  # << TODO somehow then put the id here
+        self.askedid = askedid 
         
     
     def set_first_optionbit(self,setop):

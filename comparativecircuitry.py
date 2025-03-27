@@ -1,11 +1,8 @@
 
 
-
-
-
-
-
 import numpy as np
+
+from gates import InputWire
 
 
 def generatecircuitstructure(wire, stt):

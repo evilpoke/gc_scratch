@@ -1,28 +1,15 @@
 
+import json
 from typing import List, Tuple
 import numpy as np
+import json
 from Crypto.Cipher import AES
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from evaluatorpartyclass import IOWrapperClient
+from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate
 from ot import selectionselector
 
-
-class EGate:
-    def __init__(self, rows):
-        self.rows = rows
-
-
-
-class AccessRejectedGate(Exception):
-    def __init__(self, *args):
-        super().__init__(*args)
-
-
-def oblivioustransfer(io, privatebit):
-    # returns label (for an unknown wire)
-    
-    pass
     
 
 def maketokeybytes(t):
@@ -41,7 +28,8 @@ def decrypt(row, t , nonce, tag):
     
     return plaintext_as_bytes
 
-def decryptrow(gate: EGate, labels, i, nonce):
+
+def decryptrow(gate, labels, i, nonce):
     """
     gate: Gate to encrypt
     
@@ -58,17 +46,20 @@ def decryptrow(gate: EGate, labels, i, nonce):
         # We have a 2 bit gate on our hand
         
         
-        g0 = decrypt(gate.rows[i], (labels[0], labels[1]) )
+        g0 = decrypt(gate.rows[i][2], (labels[0], labels[1]) , nonce, gate.rows[i][3])
         if g0 == False:
             raise AccessRejectedGate("R: "+str(i))
         else:
             return g0
         
-    elif len(wirelables) == 2:
-        # TODO
-        pass
+    elif len(labels) == 1:
+        assert gate.rows == 2, "Wrong number of gate / labels"
+        
+        g0 = decrypt(gate.rows[i][1], (labels[0], labels[1]) , nonce, gate.rows[i][2])
+        
     else:
-        raise ValueError("ERR 01")
+        raise ValueError("Invalid gate")
+    
     
 def obliviously_select_label(wireid, io, plain_value):
     """
@@ -88,11 +79,20 @@ def obliviously_select_label(wireid, io, plain_value):
     selsel.do_protocol()
     return selsel.w_bsel
 
+
 def request_gate_label_from_garbler(wireid, io):
     
-    io.send("REQ")
-    io.send(wireid)
+    sms = SysCmdStrings
+    cmd = Command.performing_ot_ask
+    otan = OT_ANNOUNCE.simple_ask
+    command = sms.makecommand(cmd=cmd, otann=otan, payloadcontext=wireid, payload=None)
+    io.send(command)
+    
     wirelabel = io.recieve()
+    wirelabel = json.load(wirelabel)
+    wirelabel = wirelabel["payload"]
+    
+    
     return wirelabel
 
 
@@ -104,10 +104,8 @@ def solve(wire: InterWire, evalparty, io):
     :param evalparty: The party evaluating the circuit. The evaluation party needs to be the evaluator. Otherwise this code does simply not work
     
     """
-    sms = SysCmdStrings()
     
     nonce = None # TODO <<
-    
     
     if isinstance(wire, InputWire):
         
@@ -120,12 +118,15 @@ def solve(wire: InterWire, evalparty, io):
             wire.value = wirevalue
             
         else:
+            
+            plain_sigma = wire.value
+            assert not (plain_sigma is None), "The input wire comes from the evaluator, but "
+            
             # wire stems from the evaluator (us).
             # We have to obliviously select the wire label
             wireid = wire.id
-            wirevalue = obliviously_select_label(wireid,io)
+            wirevalue = obliviously_select_label(wireid,io, plain_sigma)
             wire.value = wirevalue
-    
     
         assert not(wire.value is None), "Input wire label " +str(wire) + " could not be constructed"
     
@@ -205,8 +206,8 @@ def main():
     p1a = InputWire(party1, 'first') #  gate3
     p1b = InputWire(party1, 'second') #  gate1
     
-    p2a = InputWire(party2, 'third') #  gate1
-    p2b = InputWire(party2, 'forth') #  gate2, gate4
+    p2a = InputWire(party2, 'third', 0) #  gate1
+    p2b = InputWire(party2, 'forth', 1) #  gate2, gate4
     
     b = AndGate()(p1b, p2a)
     c = OrGate()(b, p2b)
@@ -215,19 +216,18 @@ def main():
     f = OrGate()(d, e)
     
     
-    
     io = IOWrapperClient()
     
     calculatedsummary = generatecircuitstructure(f, "")
     
     summary = io.receive()
+    summary = json.loads(summary)
     
     assert summary == calculatedsummary, "Different circuits used"
     
     sms = SysCmdStrings()
     c = Command.ready_to_receive_circuit_rows
     command = sms.makecommand(cmd = c, otann=None, payloadcontext=None, payload=None)
-    
     io.send(command)
     
     readRows(io, f) # blocks, reads into the garbled, permuted rows into the circuit
