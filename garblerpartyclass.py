@@ -39,7 +39,8 @@ class IOWrapperServer:
     def startup(self):
         
         print("start")
-        self.sock = socket.socket(socket.AF_INET, socket.SO_REUSEPORT, socket.SOCK_STREAM, 0)
+        
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         
         self.sock.bind((self.hostname, 8443))
         self.sock.listen(5)
@@ -51,11 +52,11 @@ class IOWrapperServer:
         self.connstream.sendall(msg)
     
     def receive(self):
-        data = self.connstream.recv(1024)
+        data = self.connstream.recv(8192)
         return data
 
 
-
+"""
 io = IOWrapperServer()
 io.startup()
 v = io.receive()
@@ -67,7 +68,7 @@ io.sock.shutdown(socket.SHUT_RDWR)
 io.sock.close()
 io.connstream.close()
 io.sock.close()
-
+"""
 
 
 #io.sock.close()

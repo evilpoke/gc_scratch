@@ -44,12 +44,12 @@ class IOWrapperClient:
         self.ssock.sendall(msg)
     
     def receive(self):
-        data = self.ssock.recv(1024)
+        data = self.ssock.recv(8192)
         return data
 
 
 
-
+"""
 io = IOWrapperClient()
 io.startup()
 io.send(b"ssfdsfkadsflksajfksalfsajlfjlksajflka\r\n\r\n")
@@ -60,6 +60,7 @@ pprint.pprint(v.split(b"\r\n"))
 io.ssock.shutdown(socket.SHUT_RDWR)
 io.ssock.close()
 io.sock.close()
+"""
 
 
 """

@@ -10,8 +10,10 @@ from cryptography.hazmat.primitives import hashes
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, Gate, InputWire, OperatorGate, OrGate, XORGate
+from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate
 from ot import selectionofferer
+from utils import maketokeybytes
+from Crypto.Cipher import AES
 
 
 
@@ -29,8 +31,6 @@ def remove_plaintext_encoding(wire):
     Input: wire.
     This will recursively remove all labels 
     """
-    
-    
     
     if isinstance(wire, InterWire):
         gate = wire.gateref
@@ -60,6 +60,16 @@ def remove_plaintext_encoding(wire):
             
     # do not do anything to the input wires
 
+
+def encrypt(plaintext, labels, nonce):
+    
+    key_bytes = maketokeybytes(labels)
+    cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=nonce, use_aesni='True')
+    
+    ciphertext, tag = cipher.encrypt_and_digest(plaintext)
+    
+    return ciphertext, tag
+    
 
 def encryptgate(gate: OperatorGate, wirelables):
     """
@@ -275,7 +285,7 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
         
         
         initmsg = io.receive(initmsg)
-        initmsg = json.loads(initmsg)
+        initmsg = self.sms.load_byte_to_object(initmsg)
         
         if initmsg["cmd"] == Command.performing_ot_ask and initmsg["otann"] == OT_ANNOUNCE.ot_wire_id:
             
@@ -284,7 +294,7 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
             askedid = initmsg["payloadcontext"]
         
             so = selectionofferer(io, askedid) # grabbing the requested wire id
-        
+            
             askedid = so.askedid
             
             assert askedid in [w.id for w in allInputWiresOfParty2], "Violation in the protocol"
@@ -389,17 +399,19 @@ def main():
     e = AndGate()(c, p2b)
     f = OrGate()(d, e)
     
-    
-    garblewire(f)
+    nonce = os.urandom(12)
+    garblewire(f, nonce)
     
     io = IOWrapperServer()
     
-    summary = generatecircuitstructure(f, "")  # TODO: add commitment scheme
-    io.send(summary)
+    summaryyaml = {}
+    summaryyaml["summary"] = generatecircuitstructure(f, "")  # TODO: add commitment scheme
+    summaryyaml["nonce"] = nonce
+    io.send(summaryyaml)
     
     # waiting until the client is ready to receive the rows
     beginrequesting = io.receive()
-    beginrequesting = json.loads(beginrequesting)
+    beginrequesting = self.sms.load_byte_to_object(beginrequesting)
     assert beginrequesting["cmd"] == Command.ready_to_receive_circuit_rows, "No receiving the circuitry"
     
     establish(io, f) # blocks, transmitts garbled, permuted rows only

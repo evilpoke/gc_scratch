@@ -9,12 +9,8 @@ from comparativecircuitry import generatecircuitstructure
 from evaluatorpartyclass import IOWrapperClient
 from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate
 from ot import selectionselector
+from utils import maketokeybytes
 
-    
-
-def maketokeybytes(t):
-    # tuple t of size 2 or 1
-    pass
 
 def decrypt(row, t , nonce, tag):
 
@@ -71,9 +67,9 @@ def obliviously_select_label(wireid, io, plain_value):
     
     # setup the oblivious transfer
     
-
-    
     selsel = selectionselector(io, wireid)
+    selsel.announce_selection()
+    
     selsel.set_sigma(plain_value)
     
     selsel.do_protocol()
@@ -88,7 +84,7 @@ def request_gate_label_from_garbler(wireid, io):
     command = sms.makecommand(cmd=cmd, otann=otan, payloadcontext=wireid, payload=None)
     io.send(command)
     
-    wirelabel = io.recieve()
+    wirelabel = io.receive()
     wirelabel = json.load(wirelabel)
     wirelabel = wirelabel["payload"]
     
@@ -96,7 +92,7 @@ def request_gate_label_from_garbler(wireid, io):
     return wirelabel
 
 
-def solve(wire: InterWire, evalparty, io):
+def solve(wire: InterWire, evalparty, nonce, io):
     """
     Calling this method will lead to the 'value'-attribute in the InterWire object to be filled
     
@@ -138,7 +134,7 @@ def solve(wire: InterWire, evalparty, io):
         gate = wire.gateref
         inputwires = gate.input_gates
         for w in inputwires:
-            solve(w)
+            solve(w, evalparty, nonce,io)
         
         # extracting labels
         labels = []
@@ -173,7 +169,7 @@ def readRows(io, f):
     currentwire = f
     currentgate = currentwire.gateref
     
-    command = io.recieve()
+    command = io.receive()
     currentgate.rows = command["payload"]
     
     
@@ -215,17 +211,19 @@ def main():
     e = AndGate()(c, p2b)
     f = OrGate()(d, e)
     
-    
     io = IOWrapperClient()
-    
+    sms = SysCmdStrings()
     calculatedsummary = generatecircuitstructure(f, "")
     
     summary = io.receive()
-    summary = json.loads(summary)
+    summary = sms.load_byte_to_object(summary)
     
-    assert summary == calculatedsummary, "Different circuits used"
+    summarytxt = summary["summary"]
+    nonce = summary["nonce"]
     
-    sms = SysCmdStrings()
+    assert summarytxt == calculatedsummary, "Different circuits used"
+    
+    
     c = Command.ready_to_receive_circuit_rows
     command = sms.makecommand(cmd = c, otann=None, payloadcontext=None, payload=None)
     io.send(command)
@@ -233,7 +231,7 @@ def main():
     readRows(io, f) # blocks, reads into the garbled, permuted rows into the circuit
     # All the possiblelables attributes on all wires are set to None 
     
-    solve(f, party2, io)
+    solve(f, party2, nonce, io)
 
 
 main()

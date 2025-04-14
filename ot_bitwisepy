@@ -10,6 +10,8 @@ from random import SystemRandom
 from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 from cryptography.hazmat.primitives import serialization
 
+from ot import selectionofferer, selectionselector
+
 def hash(in_input):
     in_input = in_input.to_bytes(4096, byteorder='big')
     digest = hashes.Hash(hashes.SHA256())
@@ -198,7 +200,7 @@ class FunctionHardCoreB:
         #return ct[0] # will return a byte (not a bit)
         return ct[0] <= 127
 
-class selectionofferer:
+class selectionofferer_bitwise:
     def __init__(self, io, askedid):
         self.b0 = None
         self.b1 = None
@@ -207,13 +209,17 @@ class selectionofferer:
         
         self.askedid = askedid 
         
+        self.backend_selection_offerers = []
+        for i in range(256):
+            self.backend_selection_offerers.append(selectionofferer(io, askedid))
+        
     
     def set_first_optionbit(self,setop):
-        assert isinstance(setop, bool), "Wrong input type for setting a offer bit" 
+        assert isinstance(setop, bytes), "Wrong input type for setting a offer byte arry" 
         self.b0 = setop
     
     def set_second_optionbit(self,setop):
-        assert isinstance(setop, bool), "Wrong input type for setting a offer bit" 
+        assert isinstance(setop, bytes), "Wrong input type for setting a offer byte arry"
         self.b1 = setop
     
     
@@ -283,25 +289,26 @@ class selectionofferer:
         self.io.send(beta1)
 
 
-class selectionselector:
+class selectionselector_bitwise:
     
     def __init__(self, io, wireid):
         self.sigma = None
         self.bsel = None
         self.io = io
         self.sms = SysCmdStrings()
-        self.wireid = wireid
+        
+        self.backend_selection_selectors = []
+        for i in range(256):
+            self.backend_selection_selectors.append(selectionselector(io, wireid))
         
         
-    def announce_selection(self):
         c = Command.performing_ot_ask
         otann = OT_ANNOUNCE.ot_wire_id
-        cmddict = self.sms.makecommand(cmd=c, otann=otann, payloadcontext=self.wireid, payload=self.wireid)
+        cmddict = self.sms.makecommand(cmd=c, otann=otann, payloadcontext=wireid, payload=wireid)
         
-        self.io.send(cmddict)
-    
-    
-    
+        io.send(cmddict)
+        
+
     def set_sigma(self, setop):
         assert isinstance(setop, bool), "Wrong input type for setting a select bit" 
 
