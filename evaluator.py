@@ -7,15 +7,18 @@ from Crypto.Cipher import AES
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from evaluatorpartyclass import IOWrapperClient
-from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate
+from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate, fill_nonce_material
 from ot import selectionselector
 from utils import maketokeybytes
-
+from cryptography.hazmat.primitives import hashes
 
 def decrypt(row, t , nonce, tag):
 
     key_bytes = maketokeybytes(t)
-    cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=nonce, use_aesni='True')
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(nonce)
+    fnonce = digest.finalize()
+    cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=fnonce, use_aesni='True')
     plaintext_as_bytes = cipher.decrypt(row)
     try:
         cipher.verify(tag)
@@ -92,7 +95,7 @@ def request_gate_label_from_garbler(wireid, io):
     return wirelabel
 
 
-def solve(wire: InterWire, evalparty, nonce, io):
+def solve(wire: InterWire, evalparty, io):
     """
     Calling this method will lead to the 'value'-attribute in the InterWire object to be filled
     
@@ -134,7 +137,7 @@ def solve(wire: InterWire, evalparty, nonce, io):
         gate = wire.gateref
         inputwires = gate.input_gates
         for w in inputwires:
-            solve(w, evalparty, nonce,io)
+            solve(w, evalparty,io)
         
         # extracting labels
         labels = []
@@ -148,7 +151,7 @@ def solve(wire: InterWire, evalparty, nonce, io):
         # primitive brute-force gate evaluator
         for rowi in range(len(gate.rows)):
             try:
-                returnlabel = decryptrow(gate,labels,rowi,nonce)
+                returnlabel = decryptrow(gate,labels,rowi)
             except AccessRejectedGate as ae:
                 continue
             except Exception as e:
@@ -219,7 +222,9 @@ def main():
     summary = sms.load_byte_to_object(summary)
     
     summarytxt = summary["summary"]
-    nonce = summary["nonce"]
+    initnonce = summary["nonce"]
+    
+    fill_nonce_material(f, initnonce)
     
     assert summarytxt == calculatedsummary, "Different circuits used"
     
@@ -231,7 +236,7 @@ def main():
     readRows(io, f) # blocks, reads into the garbled, permuted rows into the circuit
     # All the possiblelables attributes on all wires are set to None 
     
-    solve(f, party2, nonce, io)
+    solve(f, party2, io)
 
 
 main()

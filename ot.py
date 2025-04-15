@@ -292,14 +292,12 @@ class selectionselector:
         self.sms = SysCmdStrings()
         self.wireid = wireid
         
-        
     def announce_selection(self):
         c = Command.performing_ot_ask
         otann = OT_ANNOUNCE.ot_wire_id
         cmddict = self.sms.makecommand(cmd=c, otann=otann, payloadcontext=self.wireid, payload=self.wireid)
         
         self.io.send(cmddict)
-    
     
     
     def set_sigma(self, setop):
@@ -386,10 +384,10 @@ class selectionselector:
             bsel = hcbit ^ beta1
         
         self.bsel = bsel
-        try:
-            self.io.send(b'EOF')
-        except Exception as e:
-            print("exited connection")
+        #try:
+        #    self.io.send(b'EOF')
+        #except Exception as e:
+        #    print("exited connection")
         
     
 class IOhandler:

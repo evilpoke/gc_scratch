@@ -2,7 +2,11 @@
 import socket
 import ssl
 import pprint
-
+from time import (
+    process_time,
+    perf_counter,
+    sleep,
+)
 
 class IOWrapperServer:
     
@@ -18,6 +22,9 @@ class IOWrapperServer:
         self.context.load_cert_chain(certfile="example.crt", keyfile="example.key")
         self.sock = None
         self.connstream = None
+        
+        self.totaltimesend = 0
+        self.totaltimereceive = 0
         
 
     def deal_with_client(self, connstream):
@@ -42,17 +49,23 @@ class IOWrapperServer:
         
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         
-        self.sock.bind((self.hostname, 8443))
+        self.sock.bind((self.hostname, 5443))
         self.sock.listen(5)
         print("listening for accept")
         newsocket, fromaddr = self.sock.accept()
         self.connstream = self.context.wrap_socket(newsocket, server_side=True)
         
     def send(self, msg):
+        a = perf_counter()
         self.connstream.sendall(msg)
+        b = perf_counter()
+        self.totaltimesend = self.totaltimesend + (b - a)
     
     def receive(self):
-        data = self.connstream.recv(8192)
+        a = perf_counter()
+        data = self.connstream.recv(5192)
+        b = perf_counter()
+        self.totaltimereceive = self.totaltimereceive + (b - a)
         return data
 
 

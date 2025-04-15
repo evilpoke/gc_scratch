@@ -1,4 +1,7 @@
 
+import numpy as np
+from cryptography.hazmat.primitives import hashes
+
 class Gate:
     
     def __init__(self, table):
@@ -30,8 +33,8 @@ class OperatorGate:
         self.rows = []
         self.isgarbled = False
         self.ispermuted = False
-        
-        
+        self.noncematerial = None
+
 
 class AndGate(OperatorGate):
     def __init__(self):
@@ -103,8 +106,42 @@ class XORGate(OperatorGate):
         self.output_wire = InterWire(self)
         return self.output_wire
 
-    
+def fill_nonce_material(finalwire, initnonce):
+    """If finalwire and initnonce where called by both parties identically, 
+    then the completecircuit will receive the same nonce 
 
+    Args:
+        finalwire (_type_): _description_
+        initnonce bytes
+    """
+    
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(initnonce)
+    newhash = digest.finalize()
+    
+    if isinstance(finalwire, InputWire):
+        return
+    else:
+        if not(gate.noncematerial is None):
+            return
+        else:
+            gate = finalwire.gateref
+            gate.noncematerial = newhash
+                    
+            ins = gate.input_gates
+            if len(ins) == 2:
+                newhash += b'AA'
+                fill_nonce_material(ins[0], newhash)    
+
+                newhash += b'BC'
+                fill_nonce_material(ins[1], newhash)
+            elif len(ins) == 1:
+                newhash += b'DD'
+                fill_nonce_material(ins[1], newhash)
+            else:
+                raise ValueError("Invalid gate")
+
+    
 class Circuit:
     
     def __init__(self, inputwires):

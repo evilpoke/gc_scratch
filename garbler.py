@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate
+from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate, fill_nonce_material
 from ot import selectionofferer
 from utils import maketokeybytes
 from Crypto.Cipher import AES
@@ -64,7 +64,10 @@ def remove_plaintext_encoding(wire):
 def encrypt(plaintext, labels, nonce):
     
     key_bytes = maketokeybytes(labels)
-    cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=nonce, use_aesni='True')
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(nonce)
+    fnonce = digest.finalize()
+    cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=fnonce, use_aesni='True')
     
     ciphertext, tag = cipher.encrypt_and_digest(plaintext)
     
@@ -86,10 +89,15 @@ def encryptgate(gate: OperatorGate, wirelables):
     
     if len(gate.table) == 4:
         assert len(wirelables) == 4, "Inadequate number of wire labels given"
-        g0, t0 = encrypt(gate.rows[0][2], (wirelables[0], wirelables[1]) )
-        g1, t1 = encrypt(gate.rows[1][2], (wirelables[0], wirelables[3]) )
-        g2, t2 = encrypt(gate.rows[2][2], (wirelables[2], wirelables[1]) )
-        g3, t3 = encrypt(gate.rows[3][2], (wirelables[2], wirelables[3]) )
+        
+        gate.noncematerial[0] = gate.noncematerial[0] ^ b'9'
+        g0, t0 = encrypt(gate.rows[0][2], (wirelables[0], wirelables[1]),gate.noncematerial )
+        gate.noncematerial[1] = gate.noncematerial[1] ^ b'c'
+        g1, t1 = encrypt(gate.rows[1][2], (wirelables[0], wirelables[3]),gate.noncematerial )
+        gate.noncematerial[2] = gate.noncematerial[2] ^ b'5'
+        g2, t2 = encrypt(gate.rows[2][2], (wirelables[2], wirelables[1]),gate.noncematerial )
+        gate.noncematerial[3] = gate.noncematerial[3] ^ b'1'
+        g3, t3 = encrypt(gate.rows[3][2], (wirelables[2], wirelables[3]),gate.noncematerial )
         
         gate.rows[0][2] = g0
         gate.rows[1][2] = g1
@@ -104,15 +112,16 @@ def encryptgate(gate: OperatorGate, wirelables):
     elif len(gate.table) == 2:
         assert len(wirelables) == 2, "Inadequate number of wire labels given"
         
-        g0, t0 = encrypt(gate.rows[0][1], (wirelables[0]) )
-        g1, t1 = encrypt(gate.rows[1][1], (wirelables[1]) )
+        gate.noncematerial[3] = gate.noncematerial[3] ^ b'z'
+        g0, t0 = encrypt(gate.rows[0][1], (wirelables[0]),gate.noncematerial )
+        gate.noncematerial[2] = gate.noncematerial[2] ^ b'v'
+        g1, t1 = encrypt(gate.rows[1][1], (wirelables[1]),gate.noncematerial )
         
         gate.rows[0][1] = g0
         gate.rows[1][1] = g1
         
         gate.rows[0][2] = t0
         gate.rows[1][2] = t1
-        
         
     else:
         raise ValueError("Tried to encrypt incompatible gate")
@@ -134,7 +143,6 @@ def maskOutputGateWithLabel(gate, resultlables):
         else:
             gate.rows[r][2] = resultlables[0]
         
-
 def encryptsourcegate(gate):
     
     if len(gate.table) == 4:
@@ -233,7 +241,7 @@ def garblewire(finalwire):
             [wV0_B, wV1_B] = garblewire(inputwireB)  # if input wire, then B is Evaluator
             
             allwirelables = [wV0_A,wV0_B,wV1_A,wV1_B]
-        elif len(gate.input_gates) == 2:
+        elif len(gate.input_gates) == 1:
             inputwireA = gate.input_gates[0]
             
             [wV0_A, wV1_A] = garblewire(inputwireA)  # if input wire, then A is Garbler
@@ -400,13 +408,16 @@ def main():
     f = OrGate()(d, e)
     
     nonce = os.urandom(12)
+    copynonce = copy.copy(nonce)
+    fill_nonce_material(f, nonce)
+    
     garblewire(f, nonce)
     
     io = IOWrapperServer()
     
     summaryyaml = {}
     summaryyaml["summary"] = generatecircuitstructure(f, "")  # TODO: add commitment scheme
-    summaryyaml["nonce"] = nonce
+    summaryyaml["nonce"] = copynonce
     io.send(summaryyaml)
     
     # waiting until the client is ready to receive the rows

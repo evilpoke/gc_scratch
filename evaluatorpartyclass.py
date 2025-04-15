@@ -3,7 +3,11 @@
 import socket
 import ssl
 import pprint
-
+from time import (
+    process_time,
+    perf_counter,
+    sleep,
+)
 
 
 class IOWrapperClient:
@@ -17,6 +21,9 @@ class IOWrapperClient:
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self.context.load_verify_locations("example.crt")
         self.ssock = None
+        
+        self.totaltimesend = 0
+        self.totaltimereceive = 0
 
     def deal_with_client(self, connstream):
         print("dealing")
@@ -37,14 +44,20 @@ class IOWrapperClient:
     def startup(self):
         
         print("start")
-        self.sock =  socket.create_connection((self.hostname, 8443))
+        self.sock =  socket.create_connection((self.hostname, 5443))
         self.ssock = self.context.wrap_socket(self.sock, server_hostname=self.hostname)
         
     def send(self, msg):
+        a = perf_counter()
         self.ssock.sendall(msg)
-    
+        b = perf_counter()
+        self.totaltimesend = self.totaltimesend + (b - a)
+        
     def receive(self):
-        data = self.ssock.recv(8192)
+        a = perf_counter()
+        data = self.ssock.recv(5192)
+        b = perf_counter()
+        self.totaltimereceive = self.totaltimereceive + (b - a)
         return data
 
 
