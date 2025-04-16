@@ -4,17 +4,18 @@ from typing import List, Tuple
 import numpy as np
 import random
 import os
-
+from tqdm import tqdm
 from cryptography.hazmat.primitives import hashes
 
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate, fill_nonce_material
+from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate, countWires, fill_nonce_material
 from ot import selectionofferer
 from ot_bitwise import selectionofferer_bitwise
 from utils import maketokeybytes
 from Crypto.Cipher import AES
+from multiprocessing import Process, Lock
 
 
 
@@ -198,7 +199,7 @@ def encryptsourcegate(gate):
         return [wV0, wV1]
     
     
-def garblewire(finalwire):
+def garblewire(finalwire, pbar):
     """
     
     Garbles the gate and all precessor gates associated with the Interwire finalwire
@@ -223,7 +224,7 @@ def garblewire(finalwire):
             wV1 = digest.finalize()
             
             finalwire.possiblelables = [wV0, wV1]
-            
+            pbar.update()
             return finalwire.possiblelables
         else:
             return finalwire.possiblelables
@@ -244,14 +245,14 @@ def garblewire(finalwire):
         if len(gate.input_gates) == 2:
             inputwireA, inputwireB = gate.input_gates
             
-            [wV0_A, wV1_A] = garblewire(inputwireA)  # if input wire, then A is Garbler
-            [wV0_B, wV1_B] = garblewire(inputwireB)  # if input wire, then B is Evaluator
+            [wV0_A, wV1_A] = garblewire(inputwireA,pbar)  # if input wire, then A is Garbler
+            [wV0_B, wV1_B] = garblewire(inputwireB,pbar)  # if input wire, then B is Evaluator
             
             allwirelables = [wV0_A,wV0_B,wV1_A,wV1_B]
         elif len(gate.input_gates) == 1:
             inputwireA = gate.input_gates[0]
             
-            [wV0_A, wV1_A] = garblewire(inputwireA)  # if input wire, then A is Garbler
+            [wV0_A, wV1_A] = garblewire(inputwireA,pbar)  # if input wire, then A is Garbler
             allwirelables = [wV0_A,wV1_A]
             
         
@@ -275,6 +276,7 @@ def garblewire(finalwire):
         encryptgate(gate, allwirelables)
         
         gate.isgarbled = True
+        pbar.update()
         
         return [wV0, wV1]
         
@@ -290,10 +292,16 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
         party2 : the evaluator (them)
     """
     
+    print("Resolving the wire fetching...")
+    
     sms = SysCmdStrings()
 
     allInputWiresOfParty1 = [w for w in inputwires if w.party == party1]
     allInputWiresOfParty2 = [w for w in inputwires if w.party == party2]  # < belong to evaluator: 
+    
+    numberofOTs = len(allInputWiresOfParty2)
+    pbar = tqdm(total=numberofOTs)
+    
     
     for i in range(len(allInputWiresOfParty2) + len(allInputWiresOfParty1)):    
         # all input wires are resolved now
@@ -308,7 +316,7 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
             askedid = initmsg["payloadcontext"]
             
             print("Resolving the wire id " + str(askedid))
-        
+            
             so = selectionofferer_bitwise(io, askedid) # grabbing the requested wire id
             
             askedid = so.askedid
@@ -322,6 +330,8 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
             so.set_second_optionbit(l1)
             
             so.do_protocol()
+            
+            pbar.update()
         
         elif initmsg["cmd"] == Command.performing_ot_ask and initmsg["otann"] == OT_ANNOUNCE.simple_ask:
             
@@ -351,7 +361,8 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
         else:
             raise ValueError("Violation in protocol")  
 
-        
+    
+    pbar.close()
         
 def establish(io, f):
     # io 
@@ -437,8 +448,12 @@ def main():
     copynonce = copy.copy(nonce)
     fill_nonce_material(f, nonce)
     
-    print("garbling...")
-    garblewire(f)
+    count = countWires(f)
+    print("garbling in total "+str(count)+ " wires")
+    
+    pbar = tqdm(total=count)
+    garblewire(f, pbar)
+    pbar.close()
     
     io = IOWrapperServer()
     sms = SysCmdStrings()

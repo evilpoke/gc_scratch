@@ -2,12 +2,12 @@
 
 from typing import List, Tuple
 import numpy as np
-
+from tqdm import tqdm
 from Crypto.Cipher import AES
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from evaluatorpartyclass import IOWrapperClient
-from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate, fill_nonce_material
+from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate, countWires, fill_nonce_material
 from ot import selectionselector
 from ot_bitwise import selectionselector_bitwise
 from utils import maketokeybytes
@@ -98,7 +98,7 @@ def request_gate_label_from_garbler(wireid, io):
     return wirelabel
 
 
-def solve(wire: InterWire, evalparty, io):
+def solve(wire: InterWire, evalparty, io, pbar):
     """
     Calling this method will lead to the 'value'-attribute in the InterWire object to be filled
     
@@ -120,6 +120,7 @@ def solve(wire: InterWire, evalparty, io):
                 
                 wirevalue = request_gate_label_from_garbler(wireid,io)
                 wire.value = wirevalue
+                pbar.update()
             else: 
                 print("Garbler wire has already been fetched")
                 
@@ -137,6 +138,8 @@ def solve(wire: InterWire, evalparty, io):
                 
                 wirevalue = obliviously_select_label(wireid,io, plain_sigma)
                 wire.value = wirevalue
+                pbar.update()
+                
             else:
                 print("We already converted the eval wire to a label value")
 
@@ -151,7 +154,7 @@ def solve(wire: InterWire, evalparty, io):
         gate = wire.gateref
         inputwires = gate.input_gates
         for w in inputwires:
-            solve(w, evalparty,io)
+            solve(w, evalparty,io,pbar)
         
         # extracting labels
         labels = []
@@ -175,6 +178,7 @@ def solve(wire: InterWire, evalparty, io):
         assert not (returnlabel is None), "Failed to solve wire after gate " + str(gate)
         
         wire.value = returnlabel
+        pbar.update()
         assert not(wire.value is None), "Intermediate wire label " +str(wire) + " could not be constructed"
         
             
@@ -278,7 +282,15 @@ def main():
     readRows(io, f) # blocks, reads into the garbled, permuted rows into the circuit
     # All the possiblelables attributes on all wires are set to None 
     
-    solve(f, party2, io)
+    
+    inputwires = [p1a,p1b,p2a,p2b]
+    allInputWiresOfParty2 = [w for w in inputwires if w.party == party2] 
+    
+    numberofOTs = len(allInputWiresOfParty2)
+    count = countWires(f)
+    pbar = tqdm(total=count)
+    solve(f, party2, io, pbar)
+    pbar.close()
     
     print(str(f.value))
 

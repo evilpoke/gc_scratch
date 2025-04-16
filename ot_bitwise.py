@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from random import SystemRandom
 from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 from cryptography.hazmat.primitives import serialization
-
+from tqdm import tqdm
 from ot import selectionofferer, selectionselector
 from multiprocessing import Process
 
@@ -19,6 +19,8 @@ class selectionofferer_bitwise:
         self.b1 = None # byte array
         self.io = io
         self.sms = SysCmdStrings()
+        
+        self.pbar = tqdm(total=256)
         
         self.askedid = askedid 
         
@@ -57,7 +59,9 @@ class selectionofferer_bitwise:
         
         for ww in self.backend_selection_offerers:
             ww.do_protocol()
+            self.pbar.update()
         
+        self.pbar.close()
 
 
 class selectionselector_bitwise:
@@ -67,12 +71,13 @@ class selectionselector_bitwise:
         self.bsel = None # will result in bitarray here
         self.io = io
         self.sms = SysCmdStrings()
+        
         self.announced = False
         self.backend_selection_selectors = []
         self.wireid = wireid
         for i in range(32*8):
             self.backend_selection_selectors.append(selectionselector(io, wireid))
-        
+        self.pbar = tqdm(total=256)
         
     def announce_selection(self):
         c = Command.performing_ot_ask
@@ -98,9 +103,11 @@ class selectionselector_bitwise:
         assert not (self.sigma is None), "Initialize first!"
         i = 0
         for ww in self.backend_selection_selectors:
-            print("ot: "+str(i))
+            #print("ot: "+str(i))
             ww.do_protocol()
             i = i + 1
+            self.pbar.update()
+        self.pbar.close()
         
         
         self.bsel = bytearray(bytes(32))

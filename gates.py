@@ -147,6 +147,25 @@ def fill_nonce_material(finalwire, initnonce):
             else:
                 raise ValueError("Invalid gate")
 
+def countWires(finalwire, acc = []):
+    
+    if finalwire in acc:
+        return 0
+    
+    if isinstance(finalwire, InputWire):
+        acc.append(finalwire)
+        return 1
+    
+    igs = finalwire.gateref.input_gates
+    
+    count = 0
+    for i in igs:
+        count += countWires(i)
+    
+    acc.append(finalwire)
+    count += 1
+    return count
+    
     
 class Circuit:
     
