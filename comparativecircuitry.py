@@ -22,7 +22,10 @@ def generatecircuitstructure(wire, stt):
         gate = wire.gateref
         stt += str(gate.table)
 
+        stt += '['
         for g in gate.input_gates:
             stt = generatecircuitstructure(g, stt)
+            stt += "|"
+        stt += ']'
         
         return stt

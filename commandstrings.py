@@ -7,6 +7,7 @@ import pprint
 from enum import Enum
 
 class Command(Enum):
+    checkcircuit = "checkcheck"
     ready_to_receive_circuit_rows = "rtscwr"
     sending_circuit_rows = "sencirrows"
     performing_ot_ask = "com_ot_a"
@@ -45,7 +46,7 @@ class SysCmdStrings:
         if cmd == Command.performing_ot_ask:
             if otann == OT_ANNOUNCE.ot_wire_id:
                 assert payloadcontext == payload, "Invalid command"
-                assert isinstance(payloadcontext, int) 
+                assert isinstance(payloadcontext, str) 
                 self.commandstructure["otann"] = OT_ANNOUNCE.ot_wire_id.value
                 self.commandstructure["payloadcontext"] = payloadcontext
                 self.commandstructure["payload"] = None
@@ -56,7 +57,7 @@ class SysCmdStrings:
                 self.commandstructure["payload"] = payload
             elif otann == OT_ANNOUNCE.simple_ask:
                 assert payloadcontext == payload, "Invalid command"
-                assert isinstance(payloadcontext, int) , "Payload context needs to be an id"
+                assert isinstance(payloadcontext, str) , "Payload context needs to be a str id"
                 self.commandstructure["otann"] = OT_ANNOUNCE.simple_ask.value
                 self.commandstructure["payloadcontext"] = payloadcontext
                 self.commandstructure["payload"] = None
@@ -68,8 +69,7 @@ class SysCmdStrings:
                 self.commandstructure["payloadcontext"] = payloadcontext
                 self.commandstructure["payload"] = payload
             elif otann == OT_ANNOUNCE.simple_ask:
-                assert payloadcontext == payload, "Invalid command"
-                assert isinstance(payloadcontext, int) , "Payload context needs to be an id"
+                assert isinstance(payloadcontext, str) , "Payload context needs to be an id"
                 self.commandstructure["otann"] = OT_ANNOUNCE.simple_ask.value
                 self.commandstructure["payloadcontext"] = payloadcontext
                 self.commandstructure["payload"] = payload
@@ -78,12 +78,16 @@ class SysCmdStrings:
         elif cmd == Command.ready_to_receive_circuit_rows:
             assert otann == None and payloadcontext == None and payload == None, "Invalid command"
         elif cmd == Command.sending_circuit_rows:
-            assert otann == None and payloadcontext == None and not ( payload == None), "Invalid command"
+            assert otann == None and payloadcontext == None and not ( payload is None), "Invalid command"
             self.commandstructure["payload"] = payload
+        elif cmd == Command.checkcircuit:
+            assert not ( payload == None), "Invalid command"
         else:
             raise ValueError("Invalid command")
 
         self.commandstructure["cmd"] = cmd.value
+        self.commandstructure["payloadcontext"] = payloadcontext
+        self.commandstructure["payload"] = payload
         
         #if isinstance(self.commandstructure["payload"], bytes):
         #    self.commandstructure["payload"] = list(self.commandstructure["payload"])
@@ -104,6 +108,9 @@ class SysCmdStrings:
         ####### cmd
         if temp["cmd"] == Command.performing_ot_ask.value:
             temp["cmd"] = Command.performing_ot_ask
+        
+        if temp["cmd"] == Command.checkcircuit.value:
+            temp["cmd"] = Command.checkcircuit
     
         if temp["cmd"] == Command.performing_ot_give.value:
             temp["cmd"] = Command.performing_ot_give

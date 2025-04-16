@@ -38,15 +38,16 @@ class OperatorGate:
 
 class AndGate(OperatorGate):
     def __init__(self):
+        super().__init__()
         self.output_wire = None
         self.input_gates = None 
         
-        self.table = np.array([
-                                [0,0,0],
-                                [0,1,0],
-                                [1,0,0],
-                                [1,1,1]
-                            ])
+        self.table = [
+                        [0,0,0],
+                        [0,1,0],
+                        [1,0,0],
+                        [1,1,1]
+                    ]
         self.rows = []
    
     def __call__(self, in0, in1):
@@ -57,14 +58,15 @@ class AndGate(OperatorGate):
     
 class OrGate(OperatorGate):
     def __init__(self):
+        super().__init__()
         self.output_wire = None
         self.input_gates = None 
-        self.table = np.array([
-                                [0,0,0],
-                                [0,1,1],
-                                [1,0,1],
-                                [1,1,1]
-                            ])
+        self.table = [
+                        [0,0,0],
+                        [0,1,1],
+                        [1,0,1],
+                        [1,1,1]
+                        ]
         self.rows = []
         
     def __call__(self, in0, in1):
@@ -75,12 +77,13 @@ class OrGate(OperatorGate):
     
 class NotGate(OperatorGate):
     def __init__(self):
+        super().__init__()
         self.output_wire = None
         self.input_gates = None 
-        self.table = np.array([
-                                [0,1],
-                                [1,0]
-                            ])
+        self.table = [
+                    [0,1],
+                    [1,0]
+                            ]
         self.rows = []
         
     def __call__(self, in0):
@@ -91,15 +94,17 @@ class NotGate(OperatorGate):
     
 class XORGate(OperatorGate):
     def __init__(self):
+        super().__init__()
         self.output_wire = None
         self.input_gates = None  
-        self.table = np.array([
-                            [0,0,0],
-                            [0,1,1],
-                            [1,0,1],
-                            [1,1,0]
-                        ])
+        self.table = [
+                        [0,0,0],
+                        [0,1,1],
+                        [1,0,1],
+                        [1,1,0]
+                        ]
         self.rows = []
+        
         
     def __call__(self, in0, in1):
         self.input_gates = [in0, in1] 
@@ -122,10 +127,11 @@ def fill_nonce_material(finalwire, initnonce):
     if isinstance(finalwire, InputWire):
         return
     else:
+        gate = finalwire.gateref
         if not(gate.noncematerial is None):
             return
         else:
-            gate = finalwire.gateref
+            
             gate.noncematerial = newhash
                     
             ins = gate.input_gates

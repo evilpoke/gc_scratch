@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 from cryptography.hazmat.primitives import serialization
 
 from ot import selectionofferer, selectionselector
-
+from multiprocessing import Process
 
 class selectionofferer_bitwise:
     def __init__(self, io, askedid):
@@ -23,7 +23,7 @@ class selectionofferer_bitwise:
         self.askedid = askedid 
         
         self.backend_selection_offerers = []
-        for i in range(3*8):
+        for i in range(32*8):
             self.backend_selection_offerers.append(selectionofferer(io, askedid))
         
     
@@ -31,7 +31,7 @@ class selectionofferer_bitwise:
         assert isinstance(setop, bytes), "Wrong input type for setting a offer byte arry" 
         
         
-        for i in range(3):
+        for i in range(32):
             for p in range(8):
                 offerer = self.backend_selection_offerers[p+8*i]
                 tobeinsertedbool = (setop[i] >> p) & 1 == 1 #b'\x01'
@@ -43,7 +43,7 @@ class selectionofferer_bitwise:
     def set_second_optionbit(self,setop):
         assert isinstance(setop, bytes), "Wrong input type for setting a offer byte arry"
         
-        for i in range(3):
+        for i in range(32):
             for p in range(8):
                 offerer = self.backend_selection_offerers[p+8*i]
                 
@@ -70,7 +70,7 @@ class selectionselector_bitwise:
         self.announced = False
         self.backend_selection_selectors = []
         self.wireid = wireid
-        for i in range(3*8):
+        for i in range(32*8):
             self.backend_selection_selectors.append(selectionselector(io, wireid))
         
         
@@ -88,7 +88,7 @@ class selectionselector_bitwise:
 
         self.sigma = setop
         
-        for i in range(3*8):
+        for i in range(32*8):
             self.backend_selection_selectors[i].sigma = setop
     
     def do_protocol(self):
@@ -103,10 +103,10 @@ class selectionselector_bitwise:
             i = i + 1
         
         
-        self.bsel = bytearray(bytes(3))
+        self.bsel = bytearray(bytes(32))
         
         
-        for i in range(3):
+        for i in range(32):
             
             for p in range(8):
             
@@ -146,8 +146,10 @@ class selectionselector_bitwise:
                 
                 self.bsel[i] = modibyte
                 
-        
-        
+#class 
+
+#def call_protocol_on_entry() # TODO multiprocessign
+
     
 class IOhandler:
     pass

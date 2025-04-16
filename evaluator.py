@@ -1,14 +1,15 @@
 
-import json
+
 from typing import List, Tuple
 import numpy as np
-import json
+
 from Crypto.Cipher import AES
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from evaluatorpartyclass import IOWrapperClient
 from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate, fill_nonce_material
 from ot import selectionselector
+from ot_bitwise import selectionselector_bitwise
 from utils import maketokeybytes
 from cryptography.hazmat.primitives import hashes
 
@@ -28,7 +29,7 @@ def decrypt(row, t , nonce, tag):
     return plaintext_as_bytes
 
 
-def decryptrow(gate, labels, i, nonce):
+def decryptrow(gate, labels, i):
     """
     gate: Gate to encrypt
     
@@ -39,8 +40,10 @@ def decryptrow(gate, labels, i, nonce):
     returns: Decrypted bit/label or Exception
     """
     
+    nonce = gate.noncematerial
+    
     if len(labels) == 2:
-        assert gate.rows == 4, "Wrong number of gate / labels"
+        assert len(gate.rows) == 4, "Wrong number of gate / labels"
         
         # We have a 2 bit gate on our hand
         
@@ -52,7 +55,7 @@ def decryptrow(gate, labels, i, nonce):
             return g0
         
     elif len(labels) == 1:
-        assert gate.rows == 2, "Wrong number of gate / labels"
+        assert len(gate.rows) == 2, "Wrong number of gate / labels"
         
         g0 = decrypt(gate.rows[i][1], (labels[0], labels[1]) , nonce, gate.rows[i][2])
         
@@ -70,26 +73,26 @@ def obliviously_select_label(wireid, io, plain_value):
     
     # setup the oblivious transfer
     
-    selsel = selectionselector(io, wireid)
+    selsel = selectionselector_bitwise(io, wireid)
     selsel.announce_selection()
     
     selsel.set_sigma(plain_value)
     
     selsel.do_protocol()
-    return selsel.w_bsel
+    return bytes(selsel.bsel)
 
 
 def request_gate_label_from_garbler(wireid, io):
     
-    sms = SysCmdStrings
+    sms = SysCmdStrings()
     cmd = Command.performing_ot_ask
     otan = OT_ANNOUNCE.simple_ask
-    command = sms.makecommand(cmd=cmd, otann=otan, payloadcontext=wireid, payload=None)
+    command = sms.makecommand(cmd=cmd, otann=otan, payloadcontext=wireid, payload=wireid)
     io.send(command)
     
     wirelabel = io.receive()
-    wirelabel = json.load(wirelabel)
-    wirelabel = wirelabel["payload"]
+    wirelabel = sms.load_byte_to_object(wirelabel)
+    wirelabel = bytes(wirelabel["payload"])
     
     
     return wirelabel
@@ -104,29 +107,40 @@ def solve(wire: InterWire, evalparty, io):
     
     """
     
-    nonce = None # TODO <<
     
     if isinstance(wire, InputWire):
         
+        #if wire.value is None:
         if wire.party != evalparty:
             # wire stems from the garbler
-            
-            # wirevalue is the label from the garbler
-            wireid = wire.id
-            wirevalue = request_gate_label_from_garbler(wireid,io)
-            wire.value = wirevalue
-            
+            if wire.value is None:
+                wireid = wire.id
+                print("Simple Requesting id "+ str(wireid))
+                # wirevalue is the label from the garbler
+                
+                wirevalue = request_gate_label_from_garbler(wireid,io)
+                wire.value = wirevalue
+            else: 
+                print("Garbler wire has already been fetched")
+                
         else:
+            # wire stems from the evaluator
+            # we need to convert the bool value to a wire label
+            if isinstance(wire.value, bool):
+                wireid = wire.id
+                print("OT Requesting id "+ str(wireid))
+                plain_sigma = wire.value
+                assert not (plain_sigma is None), "The input wire comes from the evaluator, but "
+                
+                # wire stems from the evaluator (us).
+                # We have to obliviously select the wire label
+                
+                wirevalue = obliviously_select_label(wireid,io, plain_sigma)
+                wire.value = wirevalue
+            else:
+                print("We already converted the eval wire to a label value")
+
             
-            plain_sigma = wire.value
-            assert not (plain_sigma is None), "The input wire comes from the evaluator, but "
-            
-            # wire stems from the evaluator (us).
-            # We have to obliviously select the wire label
-            wireid = wire.id
-            wirevalue = obliviously_select_label(wireid,io, plain_sigma)
-            wire.value = wirevalue
-    
         assert not(wire.value is None), "Input wire label " +str(wire) + " could not be constructed"
     
     else:
@@ -171,10 +185,33 @@ def readRows(io, f):
     
     currentwire = f
     currentgate = currentwire.gateref
+    sms = SysCmdStrings()
     
     command = io.receive()
-    currentgate.rows = command["payload"]
+    command = sms.load_byte_to_object(command)
+    listrows = command["payload"]
     
+    if len(currentgate.input_gates) == 2:
+        
+        newrows = [[bytes(1),bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1),bytes(1)]]
+        
+        for i in range(4):
+            for j in range(4):
+                newrows[i][j] = bytes(listrows[i][j])
+                
+    else:
+        newrows = [[bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1)]
+                ]
+        
+        for i in range(2):
+            for j in range(3):
+                newrows[i][j] = bytes(listrows[i][j])
+    
+    currentgate.rows = newrows
     
     inputwires = currentgate.input_gates
     
@@ -205,8 +242,8 @@ def main():
     p1a = InputWire(party1, 'first') #  gate3
     p1b = InputWire(party1, 'second') #  gate1
     
-    p2a = InputWire(party2, 'third', 0) #  gate1
-    p2b = InputWire(party2, 'forth', 1) #  gate2, gate4
+    p2a = InputWire(party2, 'third', False) #  gate1
+    p2b = InputWire(party2, 'forth', True) #  gate2, gate4
     
     b = AndGate()(p1b, p2a)
     c = OrGate()(b, p2b)
@@ -216,13 +253,18 @@ def main():
     
     io = IOWrapperClient()
     sms = SysCmdStrings()
-    calculatedsummary = generatecircuitstructure(f, "")
     
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(bytes(generatecircuitstructure(f, ""), 'utf-8'))
+    calculatedsummary = digest.finalize()
+    
+    
+    io.startup()
     summary = io.receive()
-    summary = sms.load_byte_to_object(summary)
-    
-    summarytxt = summary["summary"]
-    initnonce = summary["nonce"]
+    recievedsummary = sms.load_byte_to_object(summary)
+    recievedsummary = recievedsummary["payload"]
+    summarytxt = bytes(recievedsummary["summary"])
+    initnonce = bytes(recievedsummary["nonce"])
     
     fill_nonce_material(f, initnonce)
     
@@ -237,6 +279,8 @@ def main():
     # All the possiblelables attributes on all wires are set to None 
     
     solve(f, party2, io)
+    
+    print(str(f.value))
 
 
 main()

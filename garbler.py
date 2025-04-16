@@ -12,12 +12,13 @@ from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
 from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate, fill_nonce_material
 from ot import selectionofferer
+from ot_bitwise import selectionofferer_bitwise
 from utils import maketokeybytes
 from Crypto.Cipher import AES
 
 
 
-def permutegate(gate: Gate) -> List[Gate, Tuple]:
+def permutegate(gate: Gate):
     """
     Removes the possibilty that the evaluator can deduce to which input pair a successfully decrypted row belongs to
     
@@ -85,18 +86,17 @@ def encryptgate(gate: OperatorGate, wirelables):
                     wirelables = W0 W1
     """
     
-    gate.rows = gate.table
     
     if len(gate.table) == 4:
         assert len(wirelables) == 4, "Inadequate number of wire labels given"
         
-        gate.noncematerial[0] = gate.noncematerial[0] ^ b'9'
+        #gate.noncematerial[0] = gate.noncematerial[0] ^ 9
         g0, t0 = encrypt(gate.rows[0][2], (wirelables[0], wirelables[1]),gate.noncematerial )
-        gate.noncematerial[1] = gate.noncematerial[1] ^ b'c'
+        #gate.noncematerial[1] = gate.noncematerial[1] ^ 11
         g1, t1 = encrypt(gate.rows[1][2], (wirelables[0], wirelables[3]),gate.noncematerial )
-        gate.noncematerial[2] = gate.noncematerial[2] ^ b'5'
+        #gate.noncematerial[2] = gate.noncematerial[2] ^ 111
         g2, t2 = encrypt(gate.rows[2][2], (wirelables[2], wirelables[1]),gate.noncematerial )
-        gate.noncematerial[3] = gate.noncematerial[3] ^ b'1'
+        #gate.noncematerial[3] = gate.noncematerial[3] ^ 50
         g3, t3 = encrypt(gate.rows[3][2], (wirelables[2], wirelables[3]),gate.noncematerial )
         
         gate.rows[0][2] = g0
@@ -135,52 +135,59 @@ def maskOutputGateWithLabel(gate, resultlables):
     
     """    
 
-    for r in range(len(gate.rows)):
+    if gate.rows == []:
         
-        tableresultvalue = gate.rows[r][2]
-        if tableresultvalue == 1:
-            gate.rows[r][2] = resultlables[1]
-        else:
-            gate.rows[r][2] = resultlables[0]
+        gate.rows = copy.deepcopy(gate.table)
+        
+        for row in gate.rows:
+            row.append(bytes(1)) # for later encryption tag
+            tableresultvalue = row[-2] # the one before the last
+            
+            if tableresultvalue == 1:
+                row[-2] = resultlables[1]
+            else:
+                row[-2] = resultlables[0]
+        
+        
         
 def encryptsourcegate(gate):
     
     if len(gate.table) == 4:
         salt = os.urandom(32)
         
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("wg0ZEROBASE")
+        digest.update(b"wg0ZEROBASE")
         digest.update(salt)
         Wg0 = digest.finalize()
         
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("we0ZEROANOTHER")
+        digest.update(b"we0ZEROANOTHER")
         digest.update(salt)
         We0 = digest.finalize()
         
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("wg1ZEROFIRST")
+        digest.update(b"wg1ZEROFIRST")
         digest.update(salt)
         Wg1 = digest.finalize()
 
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("wg1ONEANOTHER")
+        digest.update(b"wg1ONEANOTHER")
         digest.update(salt)
         We1 = digest.finalize()
         
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("VALUEtargeoZEroZero")
+        digest.update(b"VALUEtargeoZEroZero")
         digest.update(salt)
         wV0 = digest.finalize()
         
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("VALUEtargeoOneOne")
+        digest.update(b"VALUEtargeoOneOne")
         digest.update(salt)
         wV1 = digest.finalize()
         
@@ -203,15 +210,15 @@ def garblewire(finalwire):
         if finalwire.possiblelables == None:
             
             salt = os.urandom(32)
-            digest = hashes.Hash(hashes.BLAKE2b())
+            digest = hashes.Hash(hashes.SHA256())
             digest.update(salt)
-            digest.update("VALUEtargeoZEroZero")
+            digest.update(b"VALUEtargeoZEroZero")
             digest.update(salt)
             wV0 = digest.finalize()
             
-            digest = hashes.Hash(hashes.BLAKE2b())
+            digest = hashes.Hash(hashes.SHA256())
             digest.update(salt)
-            digest.update("VALUEtargeoOneOne")
+            digest.update(b"VALUEtargeoOneOne")
             digest.update(salt)
             wV1 = digest.finalize()
             
@@ -249,15 +256,15 @@ def garblewire(finalwire):
             
         
         salt = os.urandom(32)
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("VALUEtargeoZEroZero")
+        digest.update(b"VALUEtargeoZEroZero")
         digest.update(salt)
         wV0 = digest.finalize()
         
-        digest = hashes.Hash(hashes.BLAKE2b())
+        digest = hashes.Hash(hashes.SHA256())
         digest.update(salt)
-        digest.update("VALUEtargeoOneOne")
+        digest.update(b"VALUEtargeoOneOne")
         digest.update(salt)
         wV1 = digest.finalize()
         
@@ -291,17 +298,18 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
     for i in range(len(allInputWiresOfParty2) + len(allInputWiresOfParty1)):    
         # all input wires are resolved now
         
-        
-        initmsg = io.receive(initmsg)
-        initmsg = self.sms.load_byte_to_object(initmsg)
+        initmsg = io.receive()
+        initmsg = sms.load_byte_to_object(initmsg)
         
         if initmsg["cmd"] == Command.performing_ot_ask and initmsg["otann"] == OT_ANNOUNCE.ot_wire_id:
             
             # OT
             
             askedid = initmsg["payloadcontext"]
+            
+            print("Resolving the wire id " + str(askedid))
         
-            so = selectionofferer(io, askedid) # grabbing the requested wire id
+            so = selectionofferer_bitwise(io, askedid) # grabbing the requested wire id
             
             askedid = so.askedid
             
@@ -323,22 +331,22 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
             
             assert wireid in [w.id for w in allInputWiresOfParty1], "Violation in the protocol"
             
-            inputwire = [w for w in allInputWiresOfParty1 if w.id == askedid][0]
+            inputwire = [w for w in allInputWiresOfParty1 if w.id == wireid][0]
             [l0, l1] = inputwire.possiblelables
             
             assert not(inputwire.value is None), "Although this wire belongs to the garbler, we do not have a value stored for it"
             
-            if inputwire.value == 0:
+            if inputwire.value == False:
                 payload = l0
-            elif inputwire.value == 1:
+            elif inputwire.value == True:
                 payload = l1
             else:
                 raise ValueError("Invalid value in wire")  
             
-            sms = SysCmdStrings
+            sms = SysCmdStrings()
             cmd = Command.performing_ot_give
             otan = OT_ANNOUNCE.simple_ask
-            command = sms.makecommand(cmd=cmd, otann=otan, payloadcontext=wireid, payload=payload)
+            command = sms.makecommand(cmd=cmd, otann=otan, payloadcontext=wireid, payload=list(payload))
             io.send(command)
         else:
             raise ValueError("Violation in protocol")  
@@ -361,7 +369,25 @@ def establish(io, f):
     
     rows = currentgate.rows
     
-    command = sms.makecommand(cmd=c, otann=None, payloadcontext=None, payload=rows)
+    
+    # convert rows consisting of arrays of arrays of bytes to arrays of arrays of lists 
+    if len(currentgate.input_gates) == 2:
+        newrows = [[bytes(1),bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1),bytes(1)]]
+        for i in range(4):
+            for j in range(4):
+                newrows[i][j] = list(bytes(rows[i][j]))
+    else:
+        newrows = [[bytes(1),bytes(1),bytes(1)],
+                [bytes(1),bytes(1),bytes(1)]
+                ]
+        for i in range(2):
+            for j in range(3):
+                newrows[i][j] = list(bytes(rows[i][j]))
+        
+    command = sms.makecommand(cmd=c, otann=None, payloadcontext=None, payload=newrows)
     
     io.send(command)
     
@@ -395,8 +421,8 @@ def main():
     party1 = "garbler"
     party2 = "evaluator"
     
-    p1a = InputWire(party1, 'first', 1) #  gate3
-    p1b = InputWire(party1, 'second',1) #  gate1
+    p1a = InputWire(party1, 'first', True) #  gate3
+    p1b = InputWire(party1, 'second',True) #  gate1
     
     p2a = InputWire(party2, 'third') #  gate1
     p2b = InputWire(party2, 'forth') #  gate2, gate4
@@ -411,24 +437,39 @@ def main():
     copynonce = copy.copy(nonce)
     fill_nonce_material(f, nonce)
     
-    garblewire(f, nonce)
+    print("garbling...")
+    garblewire(f)
     
     io = IOWrapperServer()
+    sms = SysCmdStrings()
+    
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(bytes(generatecircuitstructure(f, ""), 'utf-8'))
+    summaryhash = list(digest.finalize())
     
     summaryyaml = {}
-    summaryyaml["summary"] = generatecircuitstructure(f, "")  # TODO: add commitment scheme
-    summaryyaml["nonce"] = copynonce
-    io.send(summaryyaml)
+    summaryyaml["summary"] = summaryhash  # TODO: add commitment scheme
+    summaryyaml["nonce"] = list(copynonce)
+    
+    summarypackage = sms.makecommand(Command.checkcircuit, OT_ANNOUNCE.ot_seq, "", summaryyaml)
+    
+
+    io.startup()
+    io.send(summarypackage)
     
     # waiting until the client is ready to receive the rows
     beginrequesting = io.receive()
-    beginrequesting = self.sms.load_byte_to_object(beginrequesting)
+    beginrequesting = sms.load_byte_to_object(beginrequesting)
     assert beginrequesting["cmd"] == Command.ready_to_receive_circuit_rows, "No receiving the circuitry"
     
     establish(io, f) # blocks, transmitts garbled, permuted rows only
 
     resolvingAllObliviousTransfers(io, [p1a,p1b,p2a,p2b], party1, party2)
     
+    
+    print("The output wires are")
+    print("'1' \t - \t "+str(f.possiblelables[1]))
+    print("'0' \t - \t "+str(f.possiblelables[0]))
     
 
 main()
