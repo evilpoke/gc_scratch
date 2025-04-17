@@ -279,7 +279,42 @@ def garblewire(finalwire, pbar):
         pbar.update()
         
         return [wV0, wV1]
-        
+
+
+def parallel_OT_processor(initmsg, io,allInputWiresOfParty2,pbar ):
+    
+    askedid = initmsg["payloadcontext"]
+    
+    print("Resolving the wire id " + str(askedid))
+    
+    so = selectionofferer_bitwise(io, askedid) # grabbing the requested wire id
+    
+    askedid = so.askedid
+    
+    assert askedid in [w.id for w in allInputWiresOfParty2], "Violation in the protocol"
+    
+    inputwire = [w for w in allInputWiresOfParty2 if w.id == askedid][0]
+    [l0, l1] = inputwire.possiblelables
+    
+    so.set_first_optionbit(l0) # actually do maybe with a full 256bit 
+    so.set_second_optionbit(l1)
+    
+    so.do_protocol()
+    
+    pbar.update()
+
+
+def parallel_OT_start(initmsg, io,allInputWiresOfParty2,pbar ):
+    
+    #p = Process( # TODO
+    #        target=parallel_OT_processor, 
+    #        args=(initmsg, io,allInputWiresOfParty2,pbar)
+    #        )
+    
+    parallel_OT_processor(initmsg, io,allInputWiresOfParty2,pbar )
+    
+    #p.start()
+    
         
 def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
     """
@@ -313,25 +348,7 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
             
             # OT
             
-            askedid = initmsg["payloadcontext"]
-            
-            print("Resolving the wire id " + str(askedid))
-            
-            so = selectionofferer_bitwise(io, askedid) # grabbing the requested wire id
-            
-            askedid = so.askedid
-            
-            assert askedid in [w.id for w in allInputWiresOfParty2], "Violation in the protocol"
-            
-            inputwire = [w for w in allInputWiresOfParty2 if w.id == askedid][0]
-            [l0, l1] = inputwire.possiblelables
-            
-            so.set_first_optionbit(l0) # actually do maybe with a full 256bit 
-            so.set_second_optionbit(l1)
-            
-            so.do_protocol()
-            
-            pbar.update()
+            parallel_OT_start(initmsg, io,allInputWiresOfParty2,pbar )
         
         elif initmsg["cmd"] == Command.performing_ot_ask and initmsg["otann"] == OT_ANNOUNCE.simple_ask:
             

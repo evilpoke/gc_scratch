@@ -26,6 +26,11 @@ class IOWrapperServer:
         self.totaltimesend = 0
         self.totaltimereceive = 0
         
+        self.codesend = "_"
+        self.codereceive = "_"
+        
+        self.lock = None
+        
 
     def deal_with_client(self, connstream):
         print("dealing")
@@ -57,7 +62,18 @@ class IOWrapperServer:
         
     def send(self, msg):
         a = perf_counter()
-        self.connstream.sendall(msg)
+        
+        if self.codesend != "_":
+            # sending with additional context
+
+            
+            
+        else:
+           # sending with additional context 
+            self.connstream.sendall(msg)
+        
+        
+        
         b = perf_counter()
         self.totaltimesend = self.totaltimesend + (b - a)
     
@@ -67,6 +83,26 @@ class IOWrapperServer:
         b = perf_counter()
         self.totaltimereceive = self.totaltimereceive + (b - a)
         return data
+    
+    # TODO: this 'announce'-thing is an incredibly inefficient and stupid way to do this
+    # I did it because i do not particularly like myself. This will be replaced by a proper library of some sorts
+    
+    def announcesend(self, code):
+        
+        send the announcesendcode. do nothing else. Following the announcesend there will be a send. 
+        This send will go through as soon as the announcerecieve of the other party has cleared 
+        
+        self.codesend = code
+    
+    def announcereceive(self, code):
+        
+        while True:
+            time.sleep(1)
+            ..scan for code in codequeue..
+                -> solve
+            
+            recieve an announcesend, put it in codequeue
+        
 
 
 """

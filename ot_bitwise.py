@@ -11,7 +11,9 @@ from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 from cryptography.hazmat.primitives import serialization
 from tqdm import tqdm
 from ot import selectionofferer, selectionselector
-from multiprocessing import Process
+from multiprocessing import Process, Lock
+
+from ot_multiprocess_wrapper import perform_ot_selectofferer
 
 class selectionofferer_bitwise:
     def __init__(self, io, askedid):
@@ -26,7 +28,7 @@ class selectionofferer_bitwise:
         
         self.backend_selection_offerers = []
         for i in range(32*8):
-            self.backend_selection_offerers.append(selectionofferer(io, askedid))
+            self.backend_selection_offerers.append(selectionofferer(io, askedid, i))
         
     
     def set_first_optionbit(self,setop):
@@ -57,9 +59,19 @@ class selectionofferer_bitwise:
     def do_protocol(self):
         assert not (self.b0 is None or  self.b1 is None), "Initialize first!"
         
+        lock = Lock()  # TODO this lock needs to be spawned one layer up when we put the parallelisation one layer up
+        
         for ww in self.backend_selection_offerers:
-            ww.do_protocol()
-            self.pbar.update()
+            
+            p = Process(target=perform_ot_selectofferer, args=(ww,lock))
+            
+            #ww.do_protocol()
+            
+        for ww in self.backend_selection_offerers:
+            
+            if not p.is_alive(): # TODO??
+                self.pbar.update()
+            
         
         self.pbar.close()
 

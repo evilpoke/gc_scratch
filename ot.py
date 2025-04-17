@@ -198,12 +198,15 @@ class FunctionHardCoreB:
         #return ct[0] # will return a byte (not a bit)
         return ct[0] <= 127
 
+
+
 class selectionofferer:
-    def __init__(self, io, askedid):
+    def __init__(self, io, askedid, otid):
         self.b0 = None
         self.b1 = None
         self.io = io
         self.sms = SysCmdStrings()
+        self.otid = otid # for the typical key sizes, the values are in [0,255]
         
         self.askedid = askedid 
         
@@ -218,8 +221,7 @@ class selectionofferer:
     
     
     def do_protocol(self):
-        assert not (self.b0 is None or     self.b1 is None), "Initialize first!"
-        
+        assert not (self.b0 is None or  self.b1 is None), "Initialize first!"
         
         iin = FunctionI()
         

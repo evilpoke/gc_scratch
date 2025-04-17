@@ -14,7 +14,7 @@ This library is supposed to be a back-to-the-roots attempt of building a library
 - written in python
 - semi-honest (unrealistic security guarantee)
 - does not include any circuit optimisations (such as Free XOR)
-- uses native oblivious transfer (inefficient and also susceptible to further attacks)
+- uses naive oblivious transfer (inefficient and also susceptible to further attacks)
 - requires you to explicitly define the circuit (no E2E compiler)
 
 
