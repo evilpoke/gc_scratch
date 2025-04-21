@@ -8,10 +8,24 @@ from enum import Enum
 
 class Command(Enum):
     checkcircuit = "checkcheck"
+    
+    # cut and choose
+    askforcutnchoosever = "avorchutnchv"
+    giveacutnchoose = "givacutrnchoose"
+    cutnchoosecompleted = "cutnchosecomplete"
+    
+    # prepare gc send
     ready_to_receive_circuit_rows = "rtscwr"
+    sending_circuit_nonce = "sendcnocircuitnonce"
+    
+    
+    # send gc
     sending_circuit_rows = "sencirrows"
+    
+    # ot
     performing_ot_ask = "com_ot_a"
     performing_ot_give = "com_ot_q"
+    
 
 class OT_ANNOUNCE(Enum):
     ot_wire_id = "a:id"
@@ -63,6 +77,15 @@ class SysCmdStrings:
                 self.commandstructure["payload"] = None
             else:
                 raise ValueError("Invalid command")
+        elif cmd == Command.giveacutnchoose:
+            assert not(payload is None) , "Payload context needs to be an id"
+            assert not(payloadcontext is None) , "Payload context needs to be an id"
+        elif cmd == Command.cutnchoosecompleted:
+            pass
+        elif cmd == Command.askforcutnchoosever:
+            pass
+        elif cmd == Command.sending_circuit_nonce:
+            assert not (payload is None), "payload needs to contain the nonces"
         elif cmd == Command.performing_ot_give:
             if otann == OT_ANNOUNCE.ot_seq:
                 self.commandstructure["otann"] = OT_ANNOUNCE.ot_seq.value
@@ -108,6 +131,18 @@ class SysCmdStrings:
         ####### cmd
         if temp["cmd"] == Command.performing_ot_ask.value:
             temp["cmd"] = Command.performing_ot_ask
+        
+        if temp["cmd"] == Command.sending_circuit_nonce.value:
+            temp["cmd"] = Command.sending_circuit_nonce
+        
+        if temp["cmd"] == Command.cutnchoosecompleted.value:
+            temp["cmd"] = Command.cutnchoosecompleted
+        
+        if temp["cmd"] == Command.askforcutnchoosever.value:
+            temp["cmd"] = Command.askforcutnchoosever
+            
+        if temp["cmd"] == Command.giveacutnchoose.value:
+            temp["cmd"] = Command.giveacutnchoose
         
         if temp["cmd"] == Command.checkcircuit.value:
             temp["cmd"] = Command.checkcircuit

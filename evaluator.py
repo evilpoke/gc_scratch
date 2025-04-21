@@ -1,66 +1,21 @@
 
 
+import copy
+import random
 from typing import List, Tuple
 import numpy as np
 from tqdm import tqdm
 from Crypto.Cipher import AES
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
+from cut_n_choose_naive import verify_functional_equality
+from decryptiongate import decryptrow
 from evaluatorpartyclass import IOWrapperClient
-from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate, countWires, fill_nonce_material
+from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate, countWires, fill_nonce_material, getallinputwires
 from ot import selectionselector
 from ot_bitwise import selectionselector_bitwise
 from utils import maketokeybytes
 from cryptography.hazmat.primitives import hashes
-
-def decrypt(row, t , nonce, tag):
-
-    key_bytes = maketokeybytes(t)
-    digest = hashes.Hash(hashes.SHA256())
-    digest.update(nonce)
-    fnonce = digest.finalize()
-    cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=fnonce, use_aesni='True')
-    plaintext_as_bytes = cipher.decrypt(row)
-    try:
-        cipher.verify(tag)
-    except ValueError:
-        return False
-    
-    return plaintext_as_bytes
-
-
-def decryptrow(gate, labels, i):
-    """
-    gate: Gate to encrypt
-    
-    labels: Array of lables required to access the gate
-
-    i:  row to decrypt
-    
-    returns: Decrypted bit/label or Exception
-    """
-    
-    nonce = gate.noncematerial
-    
-    if len(labels) == 2:
-        assert len(gate.rows) == 4, "Wrong number of gate / labels"
-        
-        # We have a 2 bit gate on our hand
-        
-        
-        g0 = decrypt(gate.rows[i][2], (labels[0], labels[1]) , nonce, gate.rows[i][3])
-        if g0 == False:
-            raise AccessRejectedGate("R: "+str(i))
-        else:
-            return g0
-        
-    elif len(labels) == 1:
-        assert len(gate.rows) == 2, "Wrong number of gate / labels"
-        
-        g0 = decrypt(gate.rows[i][1], (labels[0], labels[1]) , nonce, gate.rows[i][2])
-        
-    else:
-        raise ValueError("Invalid gate")
     
     
 def obliviously_select_label(wireid, io, plain_value):
@@ -243,6 +198,9 @@ def main():
     party1 = "garbler"
     party2 = "evaluator"
     
+    cut_n_choose_lambda = 500
+    stored_circuits = []
+    
     p1a = InputWire(party1, 'first') #  gate3
     p1b = InputWire(party1, 'second') #  gate1
     
@@ -268,31 +226,95 @@ def main():
     recievedsummary = sms.load_byte_to_object(summary)
     recievedsummary = recievedsummary["payload"]
     summarytxt = bytes(recievedsummary["summary"])
-    initnonce = bytes(recievedsummary["nonce"])
+    #initnonce = bytes(recievedsummary["nonce"])
     
-    fill_nonce_material(f, initnonce)
+    #fill_nonce_material(f, initnonce)
     
     assert summarytxt == calculatedsummary, "Different circuits used"
     
+    for i in range(cut_n_choose_lambda):
+        ff = copy.deepcopy(f)
+        stored_circuits.append(ff)
     
     c = Command.ready_to_receive_circuit_rows
     command = sms.makecommand(cmd = c, otann=None, payloadcontext=None, payload=None)
     io.send(command)
     
-    readRows(io, f) # blocks, reads into the garbled, permuted rows into the circuit
-    # All the possiblelables attributes on all wires are set to None 
+    for newc in range(cut_n_choose_lambda):
+        
+        selcirc = stored_circuits[newc]
+        
+        nonceraw = io.receive()
+        noncepay = sms.load_byte_to_object(nonceraw)
+        assert noncepay["cmd"] == Command.sending_circuit_nonce, "Not recieved a nonce"
+        nonce = noncepay["payload"]
+        nonce = bytes(nonce)
+        fill_nonce_material(selcirc, nonce)
+        
+        readRows(io, selcirc) # blocks, reads into the garbled, permuted rows into the circuit
+        # All the possiblelables attributes on all wires are set to None 
+    
+    tobeverifiedcircuits = random.sample([a for a in range(cut_n_choose_lambda)], int(cut_n_choose_lambda/2))
+    
+    remainingcircuits = set([a for a in range(cut_n_choose_lambda)]) - set(tobeverifiedcircuits)
+    circuitweuse = random.choice(list(remainingcircuits))
+    
+    askcontext = {
+        'listofcircuitstoopen': list(tobeverifiedcircuits),
+        'circuitweuse': circuitweuse
+    }
+    
+    askforcuntnchoose = sms.makecommand(cmd=Command.askforcutnchoosever, otann=None, payloadcontext=askcontext, payload=None)
+    io.send(askforcuntnchoose)
+    
+    for op in tobeverifiedcircuits:
+        circ_to_be_opened = stored_circuits[op]
+        
+        tobefilledinputwires = getallinputwires(circ_to_be_opened, [])
+        
+        for _ in range(len(tobefilledinputwires)):
+            pay = io.receive()
+            pay = sms.load_byte_to_object(pay)
+            payloadcontext = pay["payloadcontext"]
+            payload = pay["payload"]
+            
+            circid = payloadcontext["circuitid"]
+            wireid = payloadcontext["circuitwires"]
+            
+            possiblelables = payload
+
+            assert circid == op, "Provided the cut and choose circuits out of order"
+            selectedwire = [w for w in tobefilledinputwires if w.id == wireid][0]
+            
+            selectedwire.possiblelables = [bytes(possiblelables[0]), bytes(possiblelables[1])]
+            #print("obtained labels" + str(selectedwire.possiblelables))
+            
+    
+    #pbar = tqdm(total=cut_n_choose_lambda)
+    for op in tqdm(tobeverifiedcircuits):
+        
+        circ_to_be_opened = stored_circuits[op]
+        
+        verify_functional_equality(f, circ_to_be_opened)
+        
+        #print("VERIF")
     
     
-    inputwires = [p1a,p1b,p2a,p2b]
-    allInputWiresOfParty2 = [w for w in inputwires if w.party == party2] 
+    cutnchoosecomplete = sms.makecommand(cmd = Command.cutnchoosecompleted, otann= None,payloadcontext= None, payload=None)
+    io.send(cutnchoosecomplete)
     
-    numberofOTs = len(allInputWiresOfParty2)
+    f = stored_circuits[circuitweuse]
+    
+    #inputwires = [p1a,p1b,p2a,p2b]
+    #allInputWiresOfParty2 = [w for w in inputwires if w.party == party2] 
+    
+    #numberofOTs = len(allInputWiresOfParty2)
     count = countWires(f)
     pbar = tqdm(total=count)
     solve(f, party2, io, pbar)
+    print("obtained value label: " + str(f.value))
     pbar.close()
     
-    print(str(f.value))
 
 
 main()

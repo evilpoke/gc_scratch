@@ -34,6 +34,7 @@ class OperatorGate:
         self.isgarbled = False
         self.ispermuted = False
         self.noncematerial = None
+        self.checkedattribute = False
 
 
 class AndGate(OperatorGate):
@@ -160,12 +161,24 @@ def countWires(finalwire, acc = []):
     
     count = 0
     for i in igs:
-        count += countWires(i)
+        count += countWires(i, acc)
     
     acc.append(finalwire)
     count += 1
     return count
     
+def getallinputwires(finalwire, acc = []):
+    if isinstance(finalwire, InputWire):
+        if not(finalwire in acc):
+            acc.append(finalwire)
+        
+        return acc
+    else:
+        wires = finalwire.gateref.input_gates
+        for w in wires:
+            acc = getallinputwires(w, acc)
+        
+        return acc
     
 class Circuit:
     

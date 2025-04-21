@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate, countWires, fill_nonce_material
+from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate, countWires, fill_nonce_material, getallinputwires
 from ot import selectionofferer
 from ot_bitwise import selectionofferer_bitwise
 from utils import maketokeybytes
@@ -199,7 +199,7 @@ def encryptsourcegate(gate):
         return [wV0, wV1]
     
     
-def garblewire(finalwire, pbar):
+def garblewire(finalwire):
     """
     
     Garbles the gate and all precessor gates associated with the Interwire finalwire
@@ -224,7 +224,7 @@ def garblewire(finalwire, pbar):
             wV1 = digest.finalize()
             
             finalwire.possiblelables = [wV0, wV1]
-            pbar.update()
+            
             return finalwire.possiblelables
         else:
             return finalwire.possiblelables
@@ -245,14 +245,14 @@ def garblewire(finalwire, pbar):
         if len(gate.input_gates) == 2:
             inputwireA, inputwireB = gate.input_gates
             
-            [wV0_A, wV1_A] = garblewire(inputwireA,pbar)  # if input wire, then A is Garbler
-            [wV0_B, wV1_B] = garblewire(inputwireB,pbar)  # if input wire, then B is Evaluator
+            [wV0_A, wV1_A] = garblewire(inputwireA)  # if input wire, then A is Garbler
+            [wV0_B, wV1_B] = garblewire(inputwireB)  # if input wire, then B is Evaluator
             
             allwirelables = [wV0_A,wV0_B,wV1_A,wV1_B]
         elif len(gate.input_gates) == 1:
             inputwireA = gate.input_gates[0]
             
-            [wV0_A, wV1_A] = garblewire(inputwireA,pbar)  # if input wire, then A is Garbler
+            [wV0_A, wV1_A] = garblewire(inputwireA)  # if input wire, then A is Garbler
             allwirelables = [wV0_A,wV1_A]
             
         
@@ -276,7 +276,7 @@ def garblewire(finalwire, pbar):
         encryptgate(gate, allwirelables)
         
         gate.isgarbled = True
-        pbar.update()
+        
         
         return [wV0, wV1]
         
@@ -432,6 +432,10 @@ def main():
     party1 = "garbler"
     party2 = "evaluator"
     
+    cut_n_choose_lambda = 500
+    stored_circuits = []
+    stored_nonces = []
+    
     p1a = InputWire(party1, 'first', True) #  gate3
     p1b = InputWire(party1, 'second',True) #  gate1
     
@@ -444,47 +448,108 @@ def main():
     e = AndGate()(c, p2b)
     f = OrGate()(d, e)
     
-    nonce = os.urandom(12)
-    copynonce = copy.copy(nonce)
-    fill_nonce_material(f, nonce)
-    
-    count = countWires(f)
-    print("garbling in total "+str(count)+ " wires")
-    
-    pbar = tqdm(total=count)
-    garblewire(f, pbar)
-    pbar.close()
-    
     io = IOWrapperServer()
     sms = SysCmdStrings()
     
+    
+    # checking public circuit 
     digest = hashes.Hash(hashes.SHA256())
     digest.update(bytes(generatecircuitstructure(f, ""), 'utf-8'))
     summaryhash = list(digest.finalize())
-    
     summaryyaml = {}
     summaryyaml["summary"] = summaryhash  # TODO: add commitment scheme
-    summaryyaml["nonce"] = list(copynonce)
-    
+    #summaryyaml["nonce"] = list(copynonce)
     summarypackage = sms.makecommand(Command.checkcircuit, OT_ANNOUNCE.ot_seq, "", summaryyaml)
-    
-
     io.startup()
     io.send(summarypackage)
     
+    print("garbling circuits...")
+    for newc in tqdm(range(cut_n_choose_lambda)):
+        
+        circuitclone = copy.deepcopy(f)
+        
+        nonce = os.urandom(12)
+        #copynonce = copy.copy(nonce)
+        fill_nonce_material(circuitclone, nonce)
+        
+        count = countWires(circuitclone)
+        #print("garbling in total "+str(count)+ " wires")
+
+        #pbar = tqdm(total=count)
+        garblewire(circuitclone)
+        #pbar.close()
+
+        stored_circuits.append(circuitclone)
+        stored_nonces.append(nonce)
+        
+        
     # waiting until the client is ready to receive the rows
     beginrequesting = io.receive()
     beginrequesting = sms.load_byte_to_object(beginrequesting)
-    assert beginrequesting["cmd"] == Command.ready_to_receive_circuit_rows, "No receiving the circuitry"
+    assert beginrequesting["cmd"] == Command.ready_to_receive_circuit_rows, "No receiving the circuitry"   
     
-    establish(io, f) # blocks, transmitts garbled, permuted rows only
+    for newc in range(cut_n_choose_lambda):
+        
+        noncei = stored_nonces[newc]
+        noncesend = sms.makecommand(cmd = Command.sending_circuit_nonce, otann=None, payloadcontext="", payload=list(noncei))
+        io.send(noncesend)
+        
+        establish(io, stored_circuits[newc])
+    
+    
+    requestingcuntnchooseopening = io.receive()
+    requestingcuntnchooseopening = sms.load_byte_to_object(requestingcuntnchooseopening)
+    assert requestingcuntnchooseopening["cmd"] == Command.askforcutnchoosever, "Why not performing cut&choose?"  
+    listofcircuitstoopen = requestingcuntnchooseopening["payloadcontext"]["listofcircuitstoopen"]
+    circuitweuse = requestingcuntnchooseopening["payloadcontext"]["circuitweuse"]
+    
+    for op in listofcircuitstoopen:
+        
+        circ_to_be_opened = stored_circuits[op]
+        
+        allinputwires = getallinputwires(circ_to_be_opened, [])
+        
+        for inputwire in allinputwires:
+            
+            wirelabels = inputwire.possiblelables
+            
+            contextdicts = {'circuitid': op,
+                            'circuitwires': inputwire.id}
+            
+            payload = [list(wirelabels[0]), list(wirelabels[1])]
+            
+            pay = sms.makecommand(cmd = Command.giveacutnchoose, otann= None, payloadcontext=contextdicts, payload=payload)
+            io.send(pay)
+        
+    circ_to_be_used = stored_circuits[circuitweuse]
+    
+    
+    cutnchoosecompleted = io.receive()
+    cutnchoosecompleted = sms.load_byte_to_object(cutnchoosecompleted)
+    assert cutnchoosecompleted["cmd"] == Command.cutnchoosecompleted, "Garbler has failed to provide security"  
+    
+    
+    #copynonce = copy.copy(nonce)
+    #fill_nonce_material(f, nonce)
+    
+    #count = countWires(f)
+    #print("garbling in total "+str(count)+ " wires")
+    
+    #pbar = tqdm(total=count)
+    #garblewire(f, pbar)
+    #pbar.close()
+    
+    #establish(io, f) # blocks, transmitts garbled, permuted rows only
 
-    resolvingAllObliviousTransfers(io, [p1a,p1b,p2a,p2b], party1, party2)
+    inputwires = getallinputwires(circ_to_be_used, [])
+    
+    
+    resolvingAllObliviousTransfers(io, inputwires, party1, party2)
     
     
     print("The output wires are")
-    print("'1' \t - \t "+str(f.possiblelables[1]))
-    print("'0' \t - \t "+str(f.possiblelables[0]))
+    print("'1' \t - \t "+str(circ_to_be_used.possiblelables[1]))
+    print("'0' \t - \t "+str(circ_to_be_used.possiblelables[0]))
     
 
 main()
