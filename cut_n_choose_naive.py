@@ -127,7 +127,68 @@ def openv(circ_to_be_opened):
                     supposed_false_label_result = resultlabel
                 if success == False:
                     raise ViolationDetected()
-            
+            else:
+                assert len(circ_to_be_opened.gateref.input_gates) == 1, "Unknown gate used"
+                ####################################################################################################################
+                
+                supposed_true_label_of_first = inputwires[0].possiblelables[1]
+                supposed_false_label_of_first = inputwires[0].possiblelables[0]
+
+                supposed_true_label_result = None
+                supposed_false_label_result = None
+                
+                success = False
+                resultlabel = None
+                for i in range(2):
+                    # trying out |0 |
+                    try:
+                        resultlabel = decryptrow(circ_to_be_opened.gateref, 
+                                [supposed_false_label_of_first],
+                                i)
+                        if success == True:
+                            raise ViolationDetected()
+                        success = True
+                    except AccessRejectedGate as arg:
+                        pass
+                    except Exception as e:
+                        raise ViolationDetected()
+                if circ_to_be_opened.gateref.table[0][1] == 1:
+                    supposed_true_label_result = resultlabel
+                else:
+                    supposed_false_label_result = resultlabel
+                if success == False:
+                    raise ViolationDetected()
+                
+                success = False
+                for i in range(2):
+                    # trying out |1 |
+                    try:
+                        resultlabel = decryptrow(circ_to_be_opened.gateref, 
+                                [supposed_true_label_of_first],
+                                i)
+                        if success == True:
+                            raise ViolationDetected()
+                        success = True
+                    except AccessRejectedGate as arg:
+                        pass
+                    except Exception as e:
+                        raise ViolationDetected()
+                if circ_to_be_opened.gateref.table[1][1] == 1:
+                    if not(supposed_true_label_result is None) and supposed_true_label_result != resultlabel:
+                        raise ViolationDetected()
+                    supposed_true_label_result = resultlabel
+                else:
+                    if not(supposed_false_label_result is None) and supposed_false_label_result != resultlabel:
+                        raise ViolationDetected()
+                    supposed_false_label_result = resultlabel
+                if success == False:
+                    raise ViolationDetected()
+                
+                
+                ####################################################################################################################
+                
+                
+                
             
             if circ_to_be_opened.possiblelables is None:
                 circ_to_be_opened.possiblelables = [supposed_false_label_result, supposed_true_label_result]

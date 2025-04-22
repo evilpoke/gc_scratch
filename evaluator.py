@@ -11,9 +11,10 @@ from comparativecircuitry import generatecircuitstructure
 from cut_n_choose_naive import verify_functional_equality
 from decryptiongate import decryptrow
 from evaluatorpartyclass import IOWrapperClient
-from gates import AccessRejectedGate, AndGate, InputWire, InterWire, OrGate, XORGate, countWires, fill_nonce_material, getallinputwires
+from gates import AccessRejectedGate, AndGate, InputWire, InterWire, NotGate, OrGate, XORGate, countWires, fill_nonce_material, getallinputwires
 from ot import selectionselector
 from ot_bitwise import selectionselector_bitwise
+from ot_hashinstHB import selectorselector_hashins
 from utils import maketokeybytes
 from cryptography.hazmat.primitives import hashes
     
@@ -28,7 +29,7 @@ def obliviously_select_label(wireid, io, plain_value):
     
     # setup the oblivious transfer
     
-    selsel = selectionselector_bitwise(io, wireid)
+    selsel = selectorselector_hashins(io, wireid) #selectionselector_bitwise(io, wireid)
     selsel.announce_selection()
     
     selsel.set_sigma(plain_value)
@@ -198,9 +199,44 @@ def main():
     party1 = "garbler"
     party2 = "evaluator"
     
-    cut_n_choose_lambda = 500
+    cut_n_choose_lambda = 200
     stored_circuits = []
     
+    p1s = []
+    p2s = []
+    for i in range(50):
+        vv = random.choice([True,False])
+        p1s.append(InputWire(party1, 'plGAR'+str(i)))
+    
+    for i in range(50):
+        vv = random.choice([True,False])
+        p2s.append(InputWire(party2, 'plEVA'+str(i), vv))
+    
+    middleandresult = AndGate()(p1s[2], p2s[0])
+    
+    notp1s = []
+    for i in range(50):
+        notp1s.append(NotGate()(p1s[i]))
+    
+    upperxorinline = []
+    upperxorinline.append(XORGate()(notp1s[0], notp1s[1]))
+    for i in range(2, 50):
+        upperxorinline.append(XORGate()(upperxorinline[-1], notp1s[i]))
+    
+    
+    firstands = []
+    for i in range(50):
+        firstands.append(AndGate()(p1s[i], p2s[i]))
+        
+    xorinline = []
+    xorinline.append(XORGate()(firstands[0], firstands[1]))
+    for i in range(2,50):
+        xorinline.append(XORGate()(xorinline[-1], firstands[i]))
+    
+    lowerandresult = AndGate()(xorinline[-1], middleandresult)
+    f = AndGate()(upperxorinline[-1], lowerandresult)
+    
+    """
     p1a = InputWire(party1, 'first') #  gate3
     p1b = InputWire(party1, 'second') #  gate1
     
@@ -212,6 +248,7 @@ def main():
     d = XORGate()(c, p1a)
     e = AndGate()(c, p2b)
     f = OrGate()(d, e)
+    """
     
     io = IOWrapperClient()
     sms = SysCmdStrings()
@@ -315,6 +352,10 @@ def main():
     print("obtained value label: " + str(f.value))
     pbar.close()
     
+    
+    # breaking the pipe
+    askforcuntnchoose = sms.makecommand(cmd=Command.askforcutnchoosever, otann=None, payloadcontext=askcontext, payload=None)
+    io.send(askforcuntnchoose)
 
 
 main()

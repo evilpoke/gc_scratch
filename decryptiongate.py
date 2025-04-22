@@ -47,7 +47,11 @@ def decryptrow(gate, labels, i):
     elif len(labels) == 1:
         assert len(gate.rows) == 2, "Wrong number of gate / labels"
         
-        g0 = decrypt(gate.rows[i][1], (labels[0], labels[1]) , nonce, gate.rows[i][2])
+        g0 = decrypt(gate.rows[i][1], (labels[0]) , nonce, gate.rows[i][2])
+        if g0 == False:
+            raise AccessRejectedGate("R: "+str(i))
+        else:
+            return g0
         
     else:
         raise ValueError("Invalid gate")

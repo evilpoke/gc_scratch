@@ -10,9 +10,10 @@ from cryptography.hazmat.primitives import hashes
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, Gate, InputWire, InterWire, OperatorGate, OrGate, XORGate, countWires, fill_nonce_material, getallinputwires
+from gates import AndGate, Gate, InputWire, InterWire, NotGate, OperatorGate, OrGate, XORGate, countWires, fill_nonce_material, getallinputwires
 from ot import selectionofferer
 from ot_bitwise import selectionofferer_bitwise
+from ot_hashinstHB import selectionofferer_hashins
 from utils import maketokeybytes
 from Crypto.Cipher import AES
 from multiprocessing import Process, Lock
@@ -112,10 +113,9 @@ def encryptgate(gate: OperatorGate, wirelables):
         
     elif len(gate.table) == 2:
         assert len(wirelables) == 2, "Inadequate number of wire labels given"
-        
-        gate.noncematerial[3] = gate.noncematerial[3] ^ b'z'
+
         g0, t0 = encrypt(gate.rows[0][1], (wirelables[0]),gate.noncematerial )
-        gate.noncematerial[2] = gate.noncematerial[2] ^ b'v'
+
         g1, t1 = encrypt(gate.rows[1][1], (wirelables[1]),gate.noncematerial )
         
         gate.rows[0][1] = g0
@@ -317,7 +317,7 @@ def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
             
             print("Resolving the wire id " + str(askedid))
             
-            so = selectionofferer_bitwise(io, askedid) # grabbing the requested wire id
+            so = selectionofferer_hashins(io, askedid) #selectionofferer_bitwise(io, askedid) # grabbing the requested wire id
             
             askedid = so.askedid
             
@@ -422,17 +422,63 @@ def main():
                            |         |               |
                            |         |               |
                            |.-------AND-----[e]------OR-----[f]     4 5
+                           
+                           
+        P1 { - 300b    ---------------------------NOT--------XOR------
+                            AND           |                         |
+        P2 { - 300b    ------  |  ---------.-[0,2]------------AND    |
+                              |                               |     |
+                              |____ XOR ___                   |     |
+                                            |                 |     |
+                                            |                 |     |
+                                            |_______________ AND___AND___[f]
+                           
     """
+    
+    party1 = "garbler"
+    party2 = "evaluator"
+    
+    p1s = []
+    p2s = []
+    
+    for i in range(50):
+        vv = random.choice([True,False])
+        p1s.append(InputWire(party1, 'plGAR'+str(i), vv))
+    
+    for i in range(50):
+        p2s.append(InputWire(party2, 'plEVA'+str(i)))
+    
+    middleandresult = AndGate()(p1s[2], p2s[0])
+    
+    notp1s = []
+    for i in range(50):
+        notp1s.append(NotGate()(p1s[i]))
+    
+    upperxorinline = []
+    upperxorinline.append(XORGate()(notp1s[0], notp1s[1]))
+    for i in range(2, 50):
+        upperxorinline.append(XORGate()(upperxorinline[-1], notp1s[i]))
+    
+    
+    firstands = []
+    for i in range(50):
+        firstands.append(AndGate()(p1s[i], p2s[i]))
+        
+    xorinline = []
+    xorinline.append(XORGate()(firstands[0], firstands[1]))
+    for i in range(2,50):
+        xorinline.append(XORGate()(xorinline[-1], firstands[i]))
+    
+    lowerandresult = AndGate()(xorinline[-1], middleandresult)
+    f = AndGate()(upperxorinline[-1], lowerandresult)
     
     # 
     #
     #
     #
     
-    party1 = "garbler"
-    party2 = "evaluator"
-    
-    cut_n_choose_lambda = 500
+
+    cut_n_choose_lambda = 200
     stored_circuits = []
     stored_nonces = []
     
@@ -446,7 +492,7 @@ def main():
     c = OrGate()(b, p2b)
     d = XORGate()(c, p1a)
     e = AndGate()(c, p2b)
-    f = OrGate()(d, e)
+    #f = OrGate()(d, e)
     
     io = IOWrapperServer()
     sms = SysCmdStrings()

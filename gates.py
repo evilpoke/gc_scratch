@@ -134,7 +134,7 @@ def fill_nonce_material(finalwire, initnonce):
         else:
             
             gate.noncematerial = newhash
-                    
+            
             ins = gate.input_gates
             if len(ins) == 2:
                 newhash += b'AA'
@@ -144,7 +144,7 @@ def fill_nonce_material(finalwire, initnonce):
                 fill_nonce_material(ins[1], newhash)
             elif len(ins) == 1:
                 newhash += b'DD'
-                fill_nonce_material(ins[1], newhash)
+                fill_nonce_material(ins[0], newhash)
             else:
                 raise ValueError("Invalid gate")
 

@@ -12,7 +12,7 @@ def maketokeybytes(t):
         digest.update(t[1])
         v = digest.finalize()
     else:
-        digest.update(t[0])
+        digest.update(t)
         v = digest.finalize()
     
     return v
