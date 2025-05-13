@@ -11,7 +11,7 @@ from comparativecircuitry import generatecircuitstructure
 from cut_n_choose_naive import verify_functional_equality
 from decryptiongate import decryptrow
 from evaluatorpartyclass import IOWrapperClient
-from gates import AccessRejectedGate, AndGate, InputWire, InterWire, NotGate, OrGate, XORGate, countWires, fill_nonce_material, getallinputwires
+from gates import AccessRejectedGate, AndGate, InputWire, InterWire, NotGate, OrGate, XORGate, checkGateIsQualified, countGates, countWires, enumerateAllGates, fill_nonce_material, getallinputwires
 from ot import selectionselector
 from ot_bitwise import selectionselector_bitwise
 from ot_hashinstHB import selectorselector_hashins
@@ -53,6 +53,106 @@ def request_gate_label_from_garbler(wireid, io):
     
     return wirelabel
 
+def selectingAllObliviousTransfers(f, evalparty, io):
+    
+    ins = getallinputwires(f)
+    
+    for wire in ins:
+        
+        if isinstance(wire, InputWire):
+            
+            #if wire.value is None:
+            if wire.party != evalparty:
+                # wire stems from the garbler
+                if wire.value is None:
+                    wireid = wire.id
+                    #print("Simple Requesting id "+ str(wireid))
+                    # wirevalue is the label from the garbler
+                    
+                    wirevalue = request_gate_label_from_garbler(wireid,io)
+                    wire.value = wirevalue
+                    #pbar.update()
+                else: 
+                    print("Garbler wire has already been fetched")
+                    
+            else:
+                # wire stems from the evaluator
+                # we need to convert the bool value to a wire label
+                if isinstance(wire.value, bool):
+                    wireid = wire.id
+                    #print("OT Requesting id "+ str(wireid))
+                    plain_sigma = wire.value
+                    assert not (plain_sigma is None), "The input wire comes from the evaluator, but "
+                    
+                    # wire stems from the evaluator (us).
+                    # We have to obliviously select the wire label
+                    
+                    wirevalue = obliviously_select_label(wireid,io, plain_sigma)
+                    wire.value = wirevalue
+                    #pbar.update()
+                    
+                else:
+                    pass
+                    #print("We already converted the eval wire to a label value")
+
+                
+            assert not(wire.value is None), "Input wire label " +str(wire) + " could not be constructed"
+        
+    
+    
+
+def propagate_solver(wires, pbar):
+    """
+    
+    """
+    
+    
+    newwires = []
+    following_gates = []
+    while True:
+        for w in wires:
+            targetgates = w.coupled_target_gates
+            for t in targetgates:
+                
+                ins = t.input_gates
+                insvalues = [i.value for i in ins]
+                if None in insvalues:
+                    newwires.append(w)
+                    break
+                
+                # the gate t we can solve
+                
+                gate = t
+
+                #print("Solving gate "+str(gate)+"...")
+            
+                returnlabel = None
+            
+                # primitive brute-force gate evaluator
+                for rowi in range(len(gate.rows)):
+                    try:
+                        returnlabel = decryptrow(gate,insvalues,rowi)
+                    except AccessRejectedGate as ae:
+                        continue
+                    except Exception as e:
+                        print(str(e))
+                        raise e
+
+                assert not (returnlabel is None), "Failed to solve wire after gate " + str(gate)
+            
+                gate.output_wire.value = returnlabel
+                pbar.update()
+            
+                newwires.append(gate.output_wire)
+        
+        wires = newwires
+        newwires = []
+        
+        if [w.coupled_target_gates for w in wires].count([]) == len(wires):
+            # all wires have no coupled gates
+            break
+    
+    print("Done propagating")
 
 def solve(wire: InterWire, evalparty, io, pbar):
     """
@@ -137,11 +237,52 @@ def solve(wire: InterWire, evalparty, io, pbar):
         pbar.update()
         assert not(wire.value is None), "Intermediate wire label " +str(wire) + " could not be constructed"
         
+
+def readRows_nonrec(io, f):
+    
+    sms = SysCmdStrings()
+    allgates = enumerateAllGates(f)
+    
+    for gate in allgates:
+        
+        command = io.receive()
+        command = sms.load_byte_to_object(command)
+        listrows = command["payload"]
+        
+        if len(gate.input_gates) == 2:
             
+            newrows = [[bytes(1),bytes(1),bytes(1),bytes(1)],
+                    [bytes(1),bytes(1),bytes(1),bytes(1)],
+                    [bytes(1),bytes(1),bytes(1),bytes(1)],
+                    [bytes(1),bytes(1),bytes(1),bytes(1)]]
+            
+            for i in range(4):
+                for j in range(4):
+                    newrows[i][j] = bytes(listrows[i][j])
+                    
+        else:
+            newrows = [[bytes(1),bytes(1),bytes(1)],
+                    [bytes(1),bytes(1),bytes(1)]
+                    ]
+            
+            for i in range(2):
+                for j in range(3):
+                    newrows[i][j] = bytes(listrows[i][j])
+
+        gate.rows = newrows
+    
+    command = io.receive()
+    command = sms.load_byte_to_object(command)
+    possiblevaluesenc = command["payload"]
+    
+    f.possiblelables = [ bytes(possiblevaluesenc[0]), bytes(possiblevaluesenc[1]) ]
+
+        
 def readRows(io, f):
     
     if isinstance(f, InputWire):
         return
+    
     
     currentwire = f
     currentgate = currentwire.gateref
@@ -178,29 +319,38 @@ def readRows(io, f):
     for wire in inputwires:
         readRows(io,wire)
     
-    
-def main():
-    
+
+def create_circ(party1, party2):
     
     """
     
          {-------------------------------.
       P1 {-----------.                   |               
                      |                   |
-      P2 {----------AND----------.       |                          1
+      P2 {----------AND---[b]----.       |                          1
          {-----------------.     |       |
                            |     |       |
-                           |----OR---.--XOR---------.|              2 3
+                           |----OR-[c]--XOR---[d]---.|              2 3
                            |         |               |
                            |         |               |
-                           |.-------AND--------------OR------ ()    4 5
+                           |.-------AND-----[e]------OR-----[f]     4 5
+                           
+                           
+        P1 { - 300b    ---------------------------NOT--------XOR------
+                            AND           |                         |
+        P2 { - 300b    ------ |  ---------.-[0,2]AND-----------     |
+                              |                               |     |
+                              |____ XOR ___                   |     |
+                              |             |                 |     |
+                              |             |                 |     |
+                              |             |_______________ AND___AND___
+                              |                         |                  |  
+                              |_[10,30]-NOT-.           |                  |
+                              |            XOR---NOT---OR---NOT----------OR --- [f]
+                              |__[9,29]---- ^
+                           
     """
     
-    party1 = "garbler"
-    party2 = "evaluator"
-    
-    cut_n_choose_lambda = 200
-    stored_circuits = []
     
     p1s = []
     p2s = []
@@ -236,6 +386,35 @@ def main():
     lowerandresult = AndGate()(xorinline[-1], middleandresult)
     f = AndGate()(upperxorinline[-1], lowerandresult)
     
+    return f
+    
+    
+    
+def main():
+    
+    
+    """
+    
+         {-------------------------------.
+      P1 {-----------.                   |               
+                     |                   |
+      P2 {----------AND----------.       |                          1
+         {-----------------.     |       |
+                           |     |       |
+                           |----OR---.--XOR---------.|              2 3
+                           |         |               |
+                           |         |               |
+                           |.-------AND--------------OR------ ()    4 5
+    """
+    
+    party1 = "garbler"
+    party2 = "evaluator"
+    
+    cut_n_choose_lambda = 20
+    stored_circuits = []
+    
+    f = create_circ(party1, party2)
+    
     """
     p1a = InputWire(party1, 'first') #  gate3
     p1b = InputWire(party1, 'second') #  gate1
@@ -270,7 +449,7 @@ def main():
     assert summarytxt == calculatedsummary, "Different circuits used"
     
     for i in range(cut_n_choose_lambda):
-        ff = copy.deepcopy(f)
+        ff = create_circ(party1, party2)
         stored_circuits.append(ff)
     
     c = Command.ready_to_receive_circuit_rows
@@ -288,7 +467,8 @@ def main():
         nonce = bytes(nonce)
         fill_nonce_material(selcirc, nonce)
         
-        readRows(io, selcirc) # blocks, reads into the garbled, permuted rows into the circuit
+        readRows_nonrec(io, selcirc)
+        #readRows(io, selcirc) # blocks, reads into the garbled, permuted rows into the circuit
         # All the possiblelables attributes on all wires are set to None 
     
     tobeverifiedcircuits = random.sample([a for a in range(cut_n_choose_lambda)], int(cut_n_choose_lambda/2))
@@ -328,11 +508,12 @@ def main():
             
     
     #pbar = tqdm(total=cut_n_choose_lambda)
+    print("Verifying circuits....")
     for op in tqdm(tobeverifiedcircuits):
         
         circ_to_be_opened = stored_circuits[op]
         
-        verify_functional_equality(f, circ_to_be_opened)
+        verify_functional_equality(circ_to_be_opened)
         
         #print("VERIF")
     
@@ -346,9 +527,17 @@ def main():
     #allInputWiresOfParty2 = [w for w in inputwires if w.party == party2] 
     
     #numberofOTs = len(allInputWiresOfParty2)
-    count = countWires(f)
-    pbar = tqdm(total=count)
-    solve(f, party2, io, pbar)
+    #count = countWires(f)
+    cG = countGates(f)
+    
+    
+    print("Resolving input wires...")
+    selectingAllObliviousTransfers(f, party2, io)
+    
+    print("Solving circuit...")
+    ins = getallinputwires(f) 
+    pbar = tqdm(total=cG)
+    propagate_solver(ins, pbar)
     print("obtained value label: " + str(f.value))
     pbar.close()
     

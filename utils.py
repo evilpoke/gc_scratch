@@ -17,3 +17,10 @@ def maketokeybytes(t):
     
     return v
 
+
+
+def deterministic_joining(list1, list2):
+    
+    for ll in list2:
+        if not(ll in list1):
+            list1.append(ll)

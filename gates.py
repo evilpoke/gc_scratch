@@ -2,6 +2,9 @@
 import numpy as np
 from cryptography.hazmat.primitives import hashes
 
+from utils import deterministic_joining
+
+
 class Gate:
     
     def __init__(self, table):
@@ -14,14 +17,16 @@ class InputWire:
     def __init__(self, party, id, value=None):
         self.party = party
         self.id = id
-        self.possiblelables = None
+        self.possiblelables = []
         self.value = value # is assigned if the value is known
+        self.coupled_target_gates = []
 
 class InterWire:
     def __init__(self, gateref):
         self.value = None
         self.gateref = gateref
-        self.possiblelables = None
+        self.possiblelables = []
+        self.coupled_target_gates = []
 
 
 class OperatorGate:
@@ -52,11 +57,15 @@ class AndGate(OperatorGate):
         self.rows = []
    
     def __call__(self, in0, in1):
+        #super().(in0, in1)
         self.input_gates = [in0, in1] 
+        in0.coupled_target_gates.append(self)
+        in1.coupled_target_gates.append(self)
+        
         self.output_wire = InterWire(self)
         return self.output_wire
              
-    
+             
 class OrGate(OperatorGate):
     def __init__(self):
         super().__init__()
@@ -72,10 +81,12 @@ class OrGate(OperatorGate):
         
     def __call__(self, in0, in1):
         self.input_gates = [in0, in1] 
+        in0.coupled_target_gates.append(self)
+        in1.coupled_target_gates.append(self)
         self.output_wire = InterWire(self)
         return self.output_wire
              
-    
+        
 class NotGate(OperatorGate):
     def __init__(self):
         super().__init__()
@@ -89,6 +100,7 @@ class NotGate(OperatorGate):
         
     def __call__(self, in0):
         self.input_gates = [in0] 
+        in0.coupled_target_gates.append(self)
         self.output_wire = InterWire(self)
         return self.output_wire
     
@@ -109,10 +121,59 @@ class XORGate(OperatorGate):
         
     def __call__(self, in0, in1):
         self.input_gates = [in0, in1] 
+        in0.coupled_target_gates.append(self)
+        in1.coupled_target_gates.append(self)
         self.output_wire = InterWire(self)
         return self.output_wire
 
-def fill_nonce_material(finalwire, initnonce):
+
+
+#def pop_gates(finalwire):
+    
+def checkGateIsQualified(gate):
+    inputs = gate.input_gates
+    for i in inputs:
+        if i.value is None:
+            return False
+    return True
+
+
+def enumerateAllGates_nonrec(ins):
+    
+    added = []
+    front = []  # wires
+    newfront = ins   # wires
+    
+    
+    while True:
+        havepropagated = False
+        front = newfront
+        newfront = []
+        
+        for wire in front:
+
+            targetgates = wire.coupled_target_gates
+            deterministic_joining(added, targetgates)
+                    
+            
+            newwires = [t.output_wire for t in targetgates]
+            deterministic_joining(newfront, newwires)
+
+
+        if newfront == []:
+            return added
+        
+    
+def enumerateAllGates(finalwire):
+    
+    ins = getallinputwires(finalwire)
+
+    allgates = enumerateAllGates_nonrec(ins)
+    
+    return allgates
+
+
+def fill_nonce_material(finalwire, initnonce): # ez to un-rec
     """If finalwire and initnonce where called by both parties identically, 
     then the completecircuit will receive the same nonce 
 
@@ -121,34 +182,27 @@ def fill_nonce_material(finalwire, initnonce):
         initnonce bytes
     """
     
-    digest = hashes.Hash(hashes.SHA256())
-    digest.update(initnonce)
-    newhash = digest.finalize()
+    ins = getallinputwires(finalwire)
     
-    if isinstance(finalwire, InputWire):
-        return
-    else:
-        gate = finalwire.gateref
-        if not(gate.noncematerial is None):
-            return
-        else:
-            
-            gate.noncematerial = newhash
-            
-            ins = gate.input_gates
-            if len(ins) == 2:
-                newhash += b'AA'
-                fill_nonce_material(ins[0], newhash)    
+    allgates = enumerateAllGates_nonrec(ins)
+    
+    for gate in allgates:
+        
+        digest = hashes.Hash(hashes.SHA256())
+        digest.update(initnonce + b'ASDFfdsa')
+        initnonce = digest.finalize()
+        
+        gate.noncematerial = initnonce
+        
 
-                newhash += b'BC'
-                fill_nonce_material(ins[1], newhash)
-            elif len(ins) == 1:
-                newhash += b'DD'
-                fill_nonce_material(ins[0], newhash)
-            else:
-                raise ValueError("Invalid gate")
 
-def countWires(finalwire, acc = []):
+def countGates(finalwire):
+    
+    allgates = enumerateAllGates(finalwire)
+    
+    return len(allgates)
+
+def countWires(finalwire, acc = []): # ez to un-rec
     
     if finalwire in acc:
         return 0
@@ -166,20 +220,47 @@ def countWires(finalwire, acc = []):
     acc.append(finalwire)
     count += 1
     return count
+
     
-def getallinputwires(finalwire, acc = []):
-    if isinstance(finalwire, InputWire):
-        if not(finalwire in acc):
-            acc.append(finalwire)
-        
-        return acc
-    else:
-        wires = finalwire.gateref.input_gates
-        for w in wires:
-            acc = getallinputwires(w, acc)
-        
-        return acc
+def getallinputwires(finalwire, acc = []):  ## ez to un-rec
     
+    previouses = [finalwire]
+    newpreviouses = []
+    collectedinputwires = []
+    performed_move = False
+    while True:
+        performed_move = False
+        for p in previouses:
+            
+            if isinstance(p, InputWire):
+                if not(p in collectedinputwires):
+                    collectedinputwires.append(p)
+            else:
+                # p is wire
+                performed_move = True
+                
+                inputgates = p.gateref.input_gates
+                
+                deterministic_joining(newpreviouses, inputgates)
+                #newpreviouses = newpreviouses + inputgates
+                
+                
+                #for gates in inputgates:
+                #    # gates is a wire
+                #    
+                #    if not(gates in newpreviouses):
+        
+        #deterministic_joining(newp)
+        #newpreviouses = list(set(newpreviouses))
+                 
+                        
+        if performed_move == False:
+            return collectedinputwires #list(set(collectedinputwires))
+        
+        previouses = newpreviouses
+        newpreviouses = []
+        
+        
 class Circuit:
     
     def __init__(self, inputwires):
