@@ -6,12 +6,13 @@ from typing import List, Tuple
 import numpy as np
 from tqdm import tqdm
 from Crypto.Cipher import AES
+from circblocks import addingblock
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from cut_n_choose_naive import verify_functional_equality
 from decryptiongate import decryptrow
 from evaluatorpartyclass import IOWrapperClient
-from gates import AccessRejectedGate, AndGate, InputWire, InterWire, NotGate, OrGate, XORGate, checkGateIsQualified, countGates, countWires, enumerateAllGates, fill_nonce_material, getallinputwires
+from gates import AccessRejectedGate, AndGate, DFGate, InputWire, InterWire, NotGate, OrGate, XORGate, checkGateIsQualified, countGates, countWires, enumerateAllGates, fill_nonce_material, getallinputwires
 from ot import selectionselector
 from ot_bitwise import selectionselector_bitwise
 from ot_hashinstHB import selectorselector_hashins
@@ -101,11 +102,13 @@ def selectingAllObliviousTransfers(f, evalparty, io):
     
     
 
-def propagate_solver(wires, pbar):
+def propagate_solver(wires, cG):
     """
     
     """
     
+    
+    pbar = tqdm(total=cG)
     
     newwires = []
     following_gates = []
@@ -114,11 +117,14 @@ def propagate_solver(wires, pbar):
             targetgates = w.coupled_target_gates
             for t in targetgates:
                 
+                if not(t.output_wire.value is None):
+                    continue
+                
                 ins = t.input_gates
                 insvalues = [i.value for i in ins]
                 if None in insvalues:
                     newwires.append(w)
-                    break
+                    continue
                 
                 # the gate t we can solve
                 
@@ -132,6 +138,7 @@ def propagate_solver(wires, pbar):
                 for rowi in range(len(gate.rows)):
                     try:
                         returnlabel = decryptrow(gate,insvalues,rowi)
+                        pbar.update()
                     except AccessRejectedGate as ae:
                         continue
                     except Exception as e:
@@ -141,19 +148,22 @@ def propagate_solver(wires, pbar):
                 assert not (returnlabel is None), "Failed to solve wire after gate " + str(gate)
             
                 gate.output_wire.value = returnlabel
-                pbar.update()
-            
+                
                 newwires.append(gate.output_wire)
+        
+        if [w.coupled_target_gates for w in wires].count([]) == len(wires):
+            # all wires have no coupled gates
+            return
         
         wires = newwires
         newwires = []
         
         if [w.coupled_target_gates for w in wires].count([]) == len(wires):
             # all wires have no coupled gates
-            break
+            return
     
-    print("Done propagating")
-
+    
+    
 def solve(wire: InterWire, evalparty, io, pbar):
     """
     Calling this method will lead to the 'value'-attribute in the InterWire object to be filled
@@ -319,6 +329,33 @@ def readRows(io, f):
     for wire in inputwires:
         readRows(io,wire)
     
+    
+
+def simple_circ(party1, party2):
+    
+    p1s = []
+    p2s = []
+    
+    linestrength = 10
+    for i in range(linestrength):
+        
+        p1s.append(InputWire(party1, 'plGAR'+str(i)))
+    
+    for i in range(linestrength):
+        vv = random.choice([True,False])
+        p2s.append(InputWire(party2, 'plEVA'+str(i), vv))
+
+    firstands = []
+    for i in range(linestrength):
+        firstands.append(AndGate()(p1s[i], p2s[i]))
+        
+    xorinline = []
+    xorinline.append(XORGate()(firstands[0], firstands[1]))
+    for i in range(2,linestrength):
+        xorinline.append(XORGate()(xorinline[-1], firstands[i]))
+        
+    f = xorinline[-1]
+    return f
 
 def create_circ(party1, party2):
     
@@ -354,39 +391,27 @@ def create_circ(party1, party2):
     
     p1s = []
     p2s = []
-    for i in range(50):
-        vv = random.choice([True,False])
+    
+    
+    linestrength = 50
+    for i in range(linestrength):
+        
         p1s.append(InputWire(party1, 'plGAR'+str(i)))
     
-    for i in range(50):
+    for i in range(linestrength):
         vv = random.choice([True,False])
         p2s.append(InputWire(party2, 'plEVA'+str(i), vv))
     
-    middleandresult = AndGate()(p1s[2], p2s[0])
+    startxor = []
+    for i in range(len(p1s)):
+        startxor.append(XORGate()(p1s[i], p2s[i]) ) 
     
-    notp1s = []
-    for i in range(50):
-        notp1s.append(NotGate()(p1s[i]))
+    newxor = addingblock(startxor)
     
-    upperxorinline = []
-    upperxorinline.append(XORGate()(notp1s[0], notp1s[1]))
-    for i in range(2, 50):
-        upperxorinline.append(XORGate()(upperxorinline[-1], notp1s[i]))
+    newxor = addingblock(newxor)
     
+    return newxor[2]
     
-    firstands = []
-    for i in range(50):
-        firstands.append(AndGate()(p1s[i], p2s[i]))
-        
-    xorinline = []
-    xorinline.append(XORGate()(firstands[0], firstands[1]))
-    for i in range(2,50):
-        xorinline.append(XORGate()(xorinline[-1], firstands[i]))
-    
-    lowerandresult = AndGate()(xorinline[-1], middleandresult)
-    f = AndGate()(upperxorinline[-1], lowerandresult)
-    
-    return f
     
     
     
@@ -410,10 +435,11 @@ def main():
     party1 = "garbler"
     party2 = "evaluator"
     
-    cut_n_choose_lambda = 20
+    cut_n_choose_lambda = 50
     stored_circuits = []
     
-    f = create_circ(party1, party2)
+    #f = simple_circ(party1, party2)  # create_circ(party1, party2)
+    f =  create_circ(party1, party2)
     
     """
     p1a = InputWire(party1, 'first') #  gate3
@@ -428,6 +454,7 @@ def main():
     e = AndGate()(c, p2b)
     f = OrGate()(d, e)
     """
+    
     
     io = IOWrapperClient()
     sms = SysCmdStrings()
@@ -449,6 +476,7 @@ def main():
     assert summarytxt == calculatedsummary, "Different circuits used"
     
     for i in range(cut_n_choose_lambda):
+        #ff = simple_circ(party1, party2) # create_circ(party1, party2)
         ff = create_circ(party1, party2)
         stored_circuits.append(ff)
     
@@ -536,10 +564,10 @@ def main():
     
     print("Solving circuit...")
     ins = getallinputwires(f) 
-    pbar = tqdm(total=cG)
-    propagate_solver(ins, pbar)
+    
+    propagate_solver(ins, cG)
     print("obtained value label: " + str(f.value))
-    pbar.close()
+    
     
     
     # breaking the pipe

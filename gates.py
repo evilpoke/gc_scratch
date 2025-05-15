@@ -65,7 +65,28 @@ class AndGate(OperatorGate):
         self.output_wire = InterWire(self)
         return self.output_wire
              
-             
+class DFGate(OperatorGate):
+    
+    def __init__(self):
+        super().__init__()
+        self.output_wire = None
+        self.input_gates = None 
+        self.table = [
+                        [0,0,1],
+                        [0,1,0],
+                        [1,0,0],
+                        [1,1,1]
+                        ]
+        self.rows = []
+        
+    def __call__(self, in0, in1):
+        self.input_gates = [in0, in1] 
+        in0.coupled_target_gates.append(self)
+        in1.coupled_target_gates.append(self)
+        self.output_wire = InterWire(self)
+        return self.output_wire
+
+
 class OrGate(OperatorGate):
     def __init__(self):
         super().__init__()

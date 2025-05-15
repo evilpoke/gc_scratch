@@ -7,10 +7,11 @@ import os
 from tqdm import tqdm
 from cryptography.hazmat.primitives import hashes
 
+from circblocks import addingblock
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, Gate, InputWire, InterWire, NotGate, OperatorGate, OrGate, XORGate, countWires, enumerateAllGates, enumerateAllGates_nonrec, fill_nonce_material, getallinputwires
+from gates import AndGate, DFGate, Gate, InputWire, InterWire, NotGate, OperatorGate, OrGate, XORGate, countWires, enumerateAllGates, enumerateAllGates_nonrec, fill_nonce_material, getallinputwires
 from ot import selectionofferer
 from ot_bitwise import selectionofferer_bitwise
 from ot_hashinstHB import selectionofferer_hashins
@@ -565,6 +566,31 @@ def establish(io, f):
         io.send(command)
     
 
+def simple_circ(party1, party2):
+    
+    p1s = []
+    p2s = []
+    
+    linestrength = 10
+    for i in range(linestrength):
+        vv = random.choice([True,False])
+        p1s.append(InputWire(party1, 'plGAR'+str(i), vv))
+    
+    for i in range(linestrength):
+        p2s.append(InputWire(party2, 'plEVA'+str(i)))
+
+    firstands = []
+    for i in range(linestrength):
+        firstands.append(AndGate()(p1s[i], p2s[i]))
+        
+    xorinline = []
+    xorinline.append(XORGate()(firstands[0], firstands[1]))
+    for i in range(2,linestrength):
+        xorinline.append(XORGate()(xorinline[-1], firstands[i]))
+        
+    f = xorinline[-1]
+    return f
+        
 
 def create_circ(party1, party2):
     
@@ -597,42 +623,30 @@ def create_circ(party1, party2):
                            
     """
     
+    
     p1s = []
     p2s = []
     
-    for i in range(50):
+    linestrength = 50
+    for i in range(linestrength):
         vv = random.choice([True,False])
         p1s.append(InputWire(party1, 'plGAR'+str(i), vv))
     
-    for i in range(50):
+    for i in range(linestrength):    
         p2s.append(InputWire(party2, 'plEVA'+str(i)))
     
-    middleandresult = AndGate()(p1s[2], p2s[0])
     
-    notp1s = []
-    for i in range(50):
-        notp1s.append(NotGate()(p1s[i]))
+    startxor = []
+    for i in range(len(p1s)):
+        startxor.append(XORGate()(p1s[i], p2s[i]) ) 
     
-    upperxorinline = []
-    upperxorinline.append(XORGate()(notp1s[0], notp1s[1]))
-    for i in range(2, 50):
-        upperxorinline.append(XORGate()(upperxorinline[-1], notp1s[i]))
+    newxor = addingblock(startxor)
+    
+    newxor = addingblock(newxor)
+    
+    return newxor[2]
     
     
-    firstands = []
-    for i in range(50):
-        firstands.append(AndGate()(p1s[i], p2s[i]))
-        
-    xorinline = []
-    xorinline.append(XORGate()(firstands[0], firstands[1]))
-    for i in range(2,50):
-        xorinline.append(XORGate()(xorinline[-1], firstands[i]))
-    
-    lowerandresult = AndGate()(xorinline[-1], middleandresult)
-    f = AndGate()(upperxorinline[-1], lowerandresult)
-    
-    return f
-
 def main():
     
 
@@ -640,6 +654,7 @@ def main():
     party1 = "garbler"
     party2 = "evaluator"
     
+    #f = simple_circ(party1, party2)  #create_circ(party1, party2)
     f = create_circ(party1, party2)
     
     # 
@@ -648,7 +663,7 @@ def main():
     #
     
 
-    cut_n_choose_lambda = 20
+    cut_n_choose_lambda = 50
     stored_circuits = []
     stored_nonces = []
     
@@ -671,8 +686,8 @@ def main():
     print("garbling circuits...")
     for newc in tqdm(range(cut_n_choose_lambda)):
         
+        #circuitclone = simple_circ(party1, party2)  #create_circ(party1, party2)
         circuitclone = create_circ(party1, party2)
-        
         
         nonce = os.urandom(12)
         #copynonce = copy.copy(nonce)
