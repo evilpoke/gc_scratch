@@ -17,6 +17,8 @@ def maketokeybytes(t):
     
     return v
 
+def xoring_bytearray(bt1, bt2):
+    return bytes(a ^ b for (a, b) in zip(bt1, bt2))
 
 
 def deterministic_joining(list1, list2):

@@ -195,14 +195,6 @@ def enumerateAllGates_nonrec(ins):
         if newfront == []:
             return added
         
-    
-def enumerateAllGates(finalwire):
-    
-    ins = getallinputwires(finalwire)
-
-    allgates = enumerateAllGates_nonrec(ins)
-    
-    return allgates
 
 
 def fill_nonce_material(finalwire, initnonce): # ez to un-rec
@@ -238,28 +230,9 @@ def gate_can_be_evaluated(gate):
 
 def countGates(finalwire):
     
-    allgates = enumerateAllGates(finalwire)
+    allgates = enumerateAllGates_nonrec(finalwire)
     
     return len(allgates)
-
-def countWires(finalwire, acc = []): # ez to un-rec
-    
-    if finalwire in acc:
-        return 0
-    
-    if isinstance(finalwire, InputWire):
-        acc.append(finalwire)
-        return 1
-    
-    igs = finalwire.gateref.input_gates
-    
-    count = 0
-    for i in igs:
-        count += countWires(i, acc)
-    
-    acc.append(finalwire)
-    count += 1
-    return count
 
     
 def getallinputwires(finalwire, acc = []):  ## ez to un-rec

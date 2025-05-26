@@ -11,11 +11,11 @@ from circblocks import addingblock
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, DFGate, Gate, InputWire, InterWire, NotGate, OperatorGate, OrGate, XORGate, countWires, enumerateAllGates, enumerateAllGates_nonrec, fill_nonce_material, gate_can_be_evaluated, getallinputwires
+from gates import AndGate, DFGate, Gate, InputWire, InterWire, NotGate, OperatorGate, OrGate, XORGate, enumerateAllGates_nonrec, fill_nonce_material, gate_can_be_evaluated, getallinputwires
 from ot import selectionofferer
 from ot_bitwise import selectionofferer_bitwise
 from ot_hashinstHB import selectionofferer_hashins
-from utils import deterministic_joining, maketokeybytes
+from utils import deterministic_joining, maketokeybytes, xoring_bytearray
 from Crypto.Cipher import AES
 from multiprocessing import Process, Lock
 
@@ -155,55 +155,6 @@ def maskOutputGateWithLabel(gate, resultlables):
             # kill the input labels
             row[-3] = 0
             row[0] = 0
-        
-        
-def encryptsourcegate(gate):
-    
-    if len(gate.table) == 4:
-        salt = os.urandom(32)
-        
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"wg0ZEROBASE")
-        digest.update(salt)
-        Wg0 = digest.finalize()
-        
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"we0ZEROANOTHER")
-        digest.update(salt)
-        We0 = digest.finalize()
-        
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"wg1ZEROFIRST")
-        digest.update(salt)
-        Wg1 = digest.finalize()
-
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"wg1ONEANOTHER")
-        digest.update(salt)
-        We1 = digest.finalize()
-        
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"VALUEtargeoZEroZero")
-        digest.update(salt)
-        wV0 = digest.finalize()
-        
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"VALUEtargeoOneOne")
-        digest.update(salt)
-        wV1 = digest.finalize()
-        
-        maskOutputGateWithLabel(gate, [wV0, wV1])
-        
-        encryptgate(gate, [ Wg0 ,We0, Wg1, We1])
-        
-        return [wV0, wV1]
-
 
 def make_to_previous_gates(gates):
     pass
@@ -218,6 +169,27 @@ def garblewire_nonrec(finalwire):
     
     inputwires = getallinputwires(finalwire)
     
+    
+    """
+    
+    W^1_wireA = W^0_wireA + R
+    W^1_wireB = W^0_wireB + R
+    
+    W^0_result = W^0_wireA + W^0_wireB
+    
+    implicitly:
+    W^1_result = W^0_result + R
+    
+    """
+    
+    srcrnd = os.urandom(32)
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(srcrnd)
+    digest.update(b"VALUEtargeoZEroZero")
+    digest.update(srcrnd)
+    DeltaKey = digest.finalize()  # global delta key
+    
+    
     for iwire in inputwires:
         
         salt = os.urandom(32)
@@ -227,11 +199,8 @@ def garblewire_nonrec(finalwire):
         digest.update(salt)
         wV0 = digest.finalize()
         
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"VALUEtargeoOneOne")
-        digest.update(salt)
-        wV1 = digest.finalize()
+        
+        wV1 = xoring_bytearray(wV0 , DeltaKey)
         
         iwire.possiblelables = [wV0, wV1]
     
@@ -260,25 +229,6 @@ def garblewire_nonrec(finalwire):
                 if not gate_can_be_evaluated(gate):
                     continue
                 
-                # We can garble the gate
-
-                # 1. We generate output wires
-                salt = os.urandom(32)
-                digest = hashes.Hash(hashes.SHA256())
-                digest.update(salt)
-                digest.update(b"VALUEtargeoZEroZero")
-                digest.update(salt)
-                wV0 = digest.finalize()
-                
-                digest = hashes.Hash(hashes.SHA256())
-                digest.update(salt)
-                digest.update(b"VALUEtargeoOneOne")
-                digest.update(salt)
-                wV1 = digest.finalize()
-                
-                gate.output_wire.possiblelables = [wV0, wV1]
-    
-                maskOutputGateWithLabel(gate, [wV0, wV1])
                 
                 if len(gate.input_gates) == 2:
                     
@@ -291,13 +241,37 @@ def garblewire_nonrec(finalwire):
 
                 else:
                     
-                    assert len(gate.input_gates) == 1, "Unknown gate used"
-                    
                     wV0_A = gate.input_gates[0].possiblelables[0]
                     wV1_A = gate.input_gates[0].possiblelables[1]
                     
                     allwirelables = [wV0_A,wV1_A]
                 
+                
+                
+                # We can garble the gate
+
+                # 1. We generate output wires
+                salt = os.urandom(32)
+                digest = hashes.Hash(hashes.SHA256())
+                digest.update(salt)
+                digest.update(b"VALUEtargeoZEroZero")
+                digest.update(salt)
+                wV0 = digest.finalize()
+                
+                
+                
+                #digest = hashes.Hash(hashes.SHA256())
+                #digest.update(salt)
+                #digest.update(b"VALUEtargeoOneOne")
+                #digest.update(salt)
+                #wV1 = digest.finalize()
+                wV1 = xoring_bytearray( wV0 , DeltaKey )
+                
+                gate.output_wire.possiblelables = [wV0, wV1]
+    
+                maskOutputGateWithLabel(gate, [wV0, wV1])
+                
+
                 encryptgate(gate, allwirelables)
                 permutegate(gate)
                 
@@ -306,88 +280,6 @@ def garblewire_nonrec(finalwire):
     for gate in enumerateAllGates_nonrec(inputwires):
         assert gate.isgarbled == True, "Missed garbling a gate"
     
-                
-def garblewire(finalwire):
-    """
-    
-    Garbles the gate and all precessor gates associated with the Interwire finalwire
-    
-    """
-    
-    
-    if isinstance(finalwire, InputWire):
-        if finalwire.possiblelables == None:
-            
-            salt = os.urandom(32)
-            digest = hashes.Hash(hashes.SHA256())
-            digest.update(salt)
-            digest.update(b"VALUEtargeoZEroZero")
-            digest.update(salt)
-            wV0 = digest.finalize()
-            
-            digest = hashes.Hash(hashes.SHA256())
-            digest.update(salt)
-            digest.update(b"VALUEtargeoOneOne")
-            digest.update(salt)
-            wV1 = digest.finalize()
-            
-            finalwire.possiblelables = [wV0, wV1]
-            
-            return finalwire.possiblelables
-        else:
-            return finalwire.possiblelables
-    
-    #
-    # finalwire is InterWire !
-    #
-    
-    gate = finalwire.gateref
-    
-    if gate.isgarbled == True:
-        assert not(finalwire.possiblelables == []), "A gate has been garbled, but the plaintext labels are missing"
-        return finalwire.possiblelables
-    else:
-        
-        allwirelables = []
-        
-        if len(gate.input_gates) == 2:
-            inputwireA, inputwireB = gate.input_gates
-            
-            [wV0_A, wV1_A] = garblewire(inputwireA)  # if input wire, then A is Garbler
-            [wV0_B, wV1_B] = garblewire(inputwireB)  # if input wire, then B is Evaluator
-            
-            allwirelables = [wV0_A,wV0_B,wV1_A,wV1_B]  
-        elif len(gate.input_gates) == 1:
-            inputwireA = gate.input_gates[0]
-            
-            [wV0_A, wV1_A] = garblewire(inputwireA)  # if input wire, then A is Garbler
-            allwirelables = [wV0_A,wV1_A]
-            
-        
-        salt = os.urandom(32)
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"VALUEtargeoZEroZero")
-        digest.update(salt)
-        wV0 = digest.finalize()
-        
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(salt)
-        digest.update(b"VALUEtargeoOneOne")
-        digest.update(salt)
-        wV1 = digest.finalize()
-        
-        finalwire.possiblelables = [wV0, wV1]
-        
-        maskOutputGateWithLabel(gate, [wV0, wV1])
-        
-        encryptgate(gate, allwirelables)
-        
-        gate.isgarbled = True
-        
-        
-        return [wV0, wV1]
-        
         
 def resolvingAllObliviousTransfers(io, inputwires, party1, party2):
     """

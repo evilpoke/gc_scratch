@@ -41,7 +41,7 @@ def iter_wires(inputwires, check_if_wire_done):
             deterministic_joining(gates, evaluatable_gates)
     
     # gates now only are gates which can be garbled
-        
+    
     # getting all output wires of these gate which will then receive their 'possiblelable'
     newwires = [g.output_wire for g in gates]
     

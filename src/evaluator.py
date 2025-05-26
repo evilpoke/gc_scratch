@@ -12,7 +12,7 @@ from comparativecircuitry import generatecircuitstructure
 from cut_n_choose_naive import verify_functional_equality
 from decryptiongate import decryptrow
 from evaluatorpartyclass import IOWrapperClient
-from gates import AccessRejectedGate, AndGate, DFGate, InputWire, InterWire, NotGate, OrGate, XORGate, checkGateIsQualified, countGates, countWires, enumerateAllGates, enumerateAllGates_nonrec, fill_nonce_material, getallinputwires
+from gates import AccessRejectedGate, AndGate, DFGate, InputWire, InterWire, NotGate, OrGate, XORGate, countGates, enumerateAllGates_nonrec, fill_nonce_material, getallinputwires
 from ot import selectionselector
 from ot_bitwise import selectionselector_bitwise
 from ot_hashinstHB import selectorselector_hashins
@@ -154,91 +154,6 @@ def propagate_solver(wires, cG):
                 assert not (returnlabel is None), "Failed to solve wire after gate " + str(gate)
             
                 gate.output_wire.value = returnlabel
-    
-    
-    
-def solve(wire: InterWire, evalparty, io, pbar):
-    """
-    Calling this method will lead to the 'value'-attribute in the InterWire object to be filled
-    
-    :param wire: InterWire object
-    :param evalparty: The party evaluating the circuit. The evaluation party needs to be the evaluator. Otherwise this code does simply not work
-    
-    """
-    
-    
-    if isinstance(wire, InputWire):
-        
-        #if wire.value is None:
-        if wire.party != evalparty:
-            # wire stems from the garbler
-            if wire.value is None:
-                wireid = wire.id
-                print("Simple Requesting id "+ str(wireid))
-                # wirevalue is the label from the garbler
-                
-                wirevalue = request_gate_label_from_garbler(wireid,io)
-                wire.value = wirevalue
-                pbar.update()
-            else: 
-                print("Garbler wire has already been fetched")
-                
-        else:
-            # wire stems from the evaluator
-            # we need to convert the bool value to a wire label
-            if isinstance(wire.value, bool):
-                wireid = wire.id
-                print("OT Requesting id "+ str(wireid))
-                plain_sigma = wire.value
-                assert not (plain_sigma is None), "The input wire comes from the evaluator, but "
-                
-                # wire stems from the evaluator (us).
-                # We have to obliviously select the wire label
-                
-                wirevalue = obliviously_select_label(wireid,io, plain_sigma)
-                wire.value = wirevalue
-                pbar.update()
-                
-            else:
-                print("We already converted the eval wire to a label value")
-
-            
-        assert not(wire.value is None), "Input wire label " +str(wire) + " could not be constructed"
-    
-    else:
-        
-        assert isinstance(wire, InterWire), "Non-input wires have to be intermediate wires"
-    
-        
-        gate = wire.gateref
-        inputwires = gate.input_gates
-        for w in inputwires:
-            solve(w, evalparty,io,pbar)
-        
-        # extracting labels
-        labels = []
-        for w in inputwires:
-            labels.append(w.value)
-        
-        print("Solving gate "+str(gate)+"...")
-        
-        returnlabel = None
-        
-        # primitive brute-force gate evaluator
-        for rowi in range(len(gate.rows)):
-            try:
-                returnlabel = decryptrow(gate,labels,rowi)
-            except AccessRejectedGate as ae:
-                continue
-            except Exception as e:
-                print(str(e))
-                raise e
-
-        assert not (returnlabel is None), "Failed to solve wire after gate " + str(gate)
-        
-        wire.value = returnlabel
-        pbar.update()
-        assert not(wire.value is None), "Intermediate wire label " +str(wire) + " could not be constructed"
         
 
 def readRows_nonrec(io, f):
@@ -283,48 +198,6 @@ def readRows_nonrec(io, f):
     f.possiblelables = [ bytes(possiblevaluesenc[0]), bytes(possiblevaluesenc[1]) ]
 
         
-def readRows(io, f):
-    
-    if isinstance(f, InputWire):
-        return
-    
-    
-    currentwire = f
-    currentgate = currentwire.gateref
-    sms = SysCmdStrings()
-    
-    command = io.receive()
-    command = sms.load_byte_to_object(command)
-    listrows = command["payload"]
-    
-    if len(currentgate.input_gates) == 2:
-        
-        newrows = [[bytes(1),bytes(1),bytes(1),bytes(1)],
-                [bytes(1),bytes(1),bytes(1),bytes(1)],
-                [bytes(1),bytes(1),bytes(1),bytes(1)],
-                [bytes(1),bytes(1),bytes(1),bytes(1)]]
-        
-        for i in range(4):
-            for j in range(4):
-                newrows[i][j] = bytes(listrows[i][j])
-                
-    else:
-        newrows = [[bytes(1),bytes(1),bytes(1)],
-                [bytes(1),bytes(1),bytes(1)]
-                ]
-        
-        for i in range(2):
-            for j in range(3):
-                newrows[i][j] = bytes(listrows[i][j])
-    
-    currentgate.rows = newrows
-    
-    inputwires = currentgate.input_gates
-    
-    for wire in inputwires:
-        readRows(io,wire)
-    
-    
 
 def simple_circ(party1, party2):
     
