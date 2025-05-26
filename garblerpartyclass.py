@@ -45,13 +45,13 @@ class IOWrapperServer:
 
     def startup(self):
         
-        print("start")
+        print("Starting SSL socket..")
         
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         
         self.sock.bind((self.hostname, 5443))
         self.sock.listen(5)
-        print("listening for accept")
+        print("Listening for accept...")
         newsocket, fromaddr = self.sock.accept()
         self.connstream = self.context.wrap_socket(newsocket, server_side=True)
         

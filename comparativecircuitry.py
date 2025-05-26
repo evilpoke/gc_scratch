@@ -51,8 +51,8 @@ def generatecircuitstructure(wire, stt):
                 elif isinstance(gate, XORGate):
                     stt += 'xor'
                 
-                
-                newwires.append(gate.output_wire)
+                if not (gate.output_wire in newwires):
+                    newwires.append(gate.output_wire)
                 
             stt += "]"
         

@@ -43,8 +43,9 @@ class OperatorGate:
 
 
 class AndGate(OperatorGate):
-    def __init__(self):
+    def __init__(self, debug=None):
         super().__init__()
+        self.debug = debug
         self.output_wire = None
         self.input_gates = None 
         
@@ -63,12 +64,14 @@ class AndGate(OperatorGate):
         in1.coupled_target_gates.append(self)
         
         self.output_wire = InterWire(self)
+        self.output_wire.debug = self.debug
         return self.output_wire
-             
+
 class DFGate(OperatorGate):
     
-    def __init__(self):
+    def __init__(self, debug=None):
         super().__init__()
+        self.debug = debug
         self.output_wire = None
         self.input_gates = None 
         self.table = [
@@ -84,12 +87,15 @@ class DFGate(OperatorGate):
         in0.coupled_target_gates.append(self)
         in1.coupled_target_gates.append(self)
         self.output_wire = InterWire(self)
+        self.output_wire.debug = self.debug
         return self.output_wire
 
 
 class OrGate(OperatorGate):
-    def __init__(self):
+    
+    def __init__(self, debug=None):
         super().__init__()
+        self.debug = debug
         self.output_wire = None
         self.input_gates = None 
         self.table = [
@@ -105,12 +111,15 @@ class OrGate(OperatorGate):
         in0.coupled_target_gates.append(self)
         in1.coupled_target_gates.append(self)
         self.output_wire = InterWire(self)
+        self.output_wire.debug = self.debug
         return self.output_wire
              
         
 class NotGate(OperatorGate):
-    def __init__(self):
+    
+    def __init__(self, debug=None):
         super().__init__()
+        self.debug = debug
         self.output_wire = None
         self.input_gates = None 
         self.table = [
@@ -123,12 +132,15 @@ class NotGate(OperatorGate):
         self.input_gates = [in0] 
         in0.coupled_target_gates.append(self)
         self.output_wire = InterWire(self)
+        self.output_wire.debug = self.debug
         return self.output_wire
     
     
 class XORGate(OperatorGate):
-    def __init__(self):
+    
+    def __init__(self, debug=None):
         super().__init__()
+        self.debug = debug
         self.output_wire = None
         self.input_gates = None  
         self.table = [
@@ -145,6 +157,7 @@ class XORGate(OperatorGate):
         in0.coupled_target_gates.append(self)
         in1.coupled_target_gates.append(self)
         self.output_wire = InterWire(self)
+        self.output_wire.debug = self.debug
         return self.output_wire
 
 
@@ -175,11 +188,9 @@ def enumerateAllGates_nonrec(ins):
 
             targetgates = wire.coupled_target_gates
             deterministic_joining(added, targetgates)
-                    
             
             newwires = [t.output_wire for t in targetgates]
             deterministic_joining(newfront, newwires)
-
 
         if newfront == []:
             return added
@@ -216,6 +227,14 @@ def fill_nonce_material(finalwire, initnonce): # ez to un-rec
         gate.noncematerial = initnonce
         
 
+def gate_can_be_evaluated(gate):
+
+    inputwires = gate.input_gates
+    for ig in inputwires:
+        if ig.possiblelables == [] or (ig.possiblelables is None):
+            return False
+    
+    return True
 
 def countGates(finalwire):
     

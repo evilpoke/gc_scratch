@@ -11,13 +11,15 @@ from circblocks import addingblock
 from commandstrings import OT_ANNOUNCE, Command, SysCmdStrings
 from comparativecircuitry import generatecircuitstructure
 from garblerpartyclass import IOWrapperServer
-from gates import AndGate, DFGate, Gate, InputWire, InterWire, NotGate, OperatorGate, OrGate, XORGate, countWires, enumerateAllGates, enumerateAllGates_nonrec, fill_nonce_material, getallinputwires
+from gates import AndGate, DFGate, Gate, InputWire, InterWire, NotGate, OperatorGate, OrGate, XORGate, countWires, enumerateAllGates, enumerateAllGates_nonrec, fill_nonce_material, gate_can_be_evaluated, getallinputwires
 from ot import selectionofferer
 from ot_bitwise import selectionofferer_bitwise
 from ot_hashinstHB import selectionofferer_hashins
 from utils import deterministic_joining, maketokeybytes
 from Crypto.Cipher import AES
 from multiprocessing import Process, Lock
+
+from wireiterator import iter_wires
 
 
 
@@ -234,98 +236,77 @@ def garblewire_nonrec(finalwire):
         iwire.possiblelables = [wV0, wV1]
     
     
-    gates2garble = []
-    for iw in inputwires:
-        deterministic_joining(gates2garble, iw.coupled_target_gates)
+    def check_if_wire_done(wire):
+        return not (wire.possiblelables == [])
     
-     
-    newgates2garble = gates2garble
-    
-    # gates2garble.append(inputwires)
-    
-    while True:
+    for wires in iter_wires(inputwires,check_if_wire_done ):
         
-        did_a_garbling = False
-        gates2garble = newgates2garble
-        newgates2garble = []
+        # obtain all gates of the wires
         
-        if gates2garble == []:
-            # garbled all gates
-            pass
-        else:
-            for gate in gates2garble:
-                
-                #gate = wire.gateref 
-                if gate.isgarbled == True:
-                    assert not(gate.output_wire.possiblelables is None) and not(gate.output_wire.possiblelables == []), "A gate has been garbled, but the plaintext labels are missing"
-                else:
-                    did_a_garbling = True
-                    
-                    # trying to garble gate
-                    inputgates = gate.input_gates
-                    notpossible = False
-                    for ig in inputgates:
-                        if ig.possiblelables == [] or (ig.possiblelables is None):
-                            notpossible = True
-                            
-                    if notpossible == True:
-                        # We can not garble the gate. We have to wait for a new round
-                        
-                        newgates2garble.append( gate )
-                        
-                    else:
-                        # We can garble the gate
-
-                        # 1. We generate output wires
-                        salt = os.urandom(32)
-                        digest = hashes.Hash(hashes.SHA256())
-                        digest.update(salt)
-                        digest.update(b"VALUEtargeoZEroZero")
-                        digest.update(salt)
-                        wV0 = digest.finalize()
-                        
-                        digest = hashes.Hash(hashes.SHA256())
-                        digest.update(salt)
-                        digest.update(b"VALUEtargeoOneOne")
-                        digest.update(salt)
-                        wV1 = digest.finalize()
-                        
-                        gate.output_wire.possiblelables = [wV0, wV1]
+        resolvinggates = []
+        for w in wires:
+            deterministic_joining(resolvinggates, w.coupled_target_gates)
+        
+        # resolve the gates
+        
+        for gate in resolvinggates:
             
-                        maskOutputGateWithLabel(gate, [wV0, wV1])
-                        
-                        if len(gate.input_gates) == 2:
-                            
-                            wV0_A = gate.input_gates[0].possiblelables[0]
-                            wV1_A = gate.input_gates[0].possiblelables[1]
-                            wV0_B = gate.input_gates[1].possiblelables[0]
-                            wV1_B = gate.input_gates[1].possiblelables[1]
-                            
-                            allwirelables = [wV0_A,wV0_B,wV1_A,wV1_B]
+            if gate.isgarbled == True:
+                assert not(gate.output_wire.possiblelables is None) and not(gate.output_wire.possiblelables == []), "A gate has been garbled, but the plaintext labels are missing"
+            else:
+                
+                # trying to garble gate
+                
+                if not gate_can_be_evaluated(gate):
+                    continue
+                
+                # We can garble the gate
 
-                        else:
-                            
-                            assert len(gate.input_gates) == 1, "Unknown gate used"
-                            
-                            wV0_A = gate.input_gates[0].possiblelables[0]
-                            wV1_A = gate.input_gates[0].possiblelables[1]
-                            
-                            allwirelables = [wV0_A,wV1_A]
-                        
-                        encryptgate(gate, allwirelables)
-                        permutegate(gate)
-                        
-                        gate.isgarbled = True
-                        
-                        if gate.output_wire.coupled_target_gates == []:
-                            pass
-                            # this is one of the final wires
-                        else:
-                            newgates2garble = newgates2garble +  gate.output_wire.coupled_target_gates
+                # 1. We generate output wires
+                salt = os.urandom(32)
+                digest = hashes.Hash(hashes.SHA256())
+                digest.update(salt)
+                digest.update(b"VALUEtargeoZEroZero")
+                digest.update(salt)
+                wV0 = digest.finalize()
+                
+                digest = hashes.Hash(hashes.SHA256())
+                digest.update(salt)
+                digest.update(b"VALUEtargeoOneOne")
+                digest.update(salt)
+                wV1 = digest.finalize()
+                
+                gate.output_wire.possiblelables = [wV0, wV1]
     
-        if did_a_garbling == False:
-            break
-        
+                maskOutputGateWithLabel(gate, [wV0, wV1])
+                
+                if len(gate.input_gates) == 2:
+                    
+                    wV0_A = gate.input_gates[0].possiblelables[0]
+                    wV1_A = gate.input_gates[0].possiblelables[1]
+                    wV0_B = gate.input_gates[1].possiblelables[0]
+                    wV1_B = gate.input_gates[1].possiblelables[1]
+                    
+                    allwirelables = [wV0_A,wV0_B,wV1_A,wV1_B]
+
+                else:
+                    
+                    assert len(gate.input_gates) == 1, "Unknown gate used"
+                    
+                    wV0_A = gate.input_gates[0].possiblelables[0]
+                    wV1_A = gate.input_gates[0].possiblelables[1]
+                    
+                    allwirelables = [wV0_A,wV1_A]
+                
+                encryptgate(gate, allwirelables)
+                permutegate(gate)
+                
+                gate.isgarbled = True
+    
+    for gate in enumerateAllGates_nonrec(inputwires):
+        assert gate.isgarbled == True, "Missed garbling a gate"
+    
+                
 def garblewire(finalwire):
     """
     
@@ -571,25 +552,58 @@ def simple_circ(party1, party2):
     p1s = []
     p2s = []
     
-    linestrength = 10
-    for i in range(linestrength):
-        vv = random.choice([True,False])
-        p1s.append(InputWire(party1, 'plGAR'+str(i), vv))
-    
-    for i in range(linestrength):
-        p2s.append(InputWire(party2, 'plEVA'+str(i)))
 
-    firstands = []
-    for i in range(linestrength):
-        firstands.append(AndGate()(p1s[i], p2s[i]))
-        
-    xorinline = []
-    xorinline.append(XORGate()(firstands[0], firstands[1]))
-    for i in range(2,linestrength):
-        xorinline.append(XORGate()(xorinline[-1], firstands[i]))
-        
-    f = xorinline[-1]
-    return f
+    p1s.append(InputWire(party1, 'inputparty1a', True))
+    p1s.append(InputWire(party1, 'inputparty1b', True))
+    
+    p2s.append(InputWire(party2, 'inputparty2a'))
+    p2s.append(InputWire(party2, 'inputparty2b'))
+
+    a = AndGate("a gate")(p1s[1], p2s[1])
+    b = NotGate("b gate")(a)
+    c = XORGate("c gate")(b, a)
+    d = XORGate("d gate")(p2s[0], c)
+
+    v = AndGate()(
+            NotGate()(OrGate()(
+                AndGate()(
+                        NotGate()(a),
+                        b,
+                ),
+                c
+            ))
+            ,
+            OrGate()(
+                AndGate()(
+                        NotGate()(c),
+                        d,
+                ),
+                d
+            )
+            )
+
+    e = AndGate()(
+            NotGate()(OrGate()(
+                AndGate()(
+                        NotGate()(a),
+                        v,
+                ),
+                c
+            ))
+            ,
+            OrGate()(
+                AndGate()(
+                        NotGate()(c),
+                        d,
+                ),
+                d
+            )
+            )
+
+
+    t = XORGate()(v, e)
+
+    return t
         
 
 def create_circ(party1, party2):
@@ -643,8 +657,16 @@ def create_circ(party1, party2):
     newxor = addingblock(startxor)
     
     newxor = addingblock(newxor)
+
+    newxor = addingblock(newxor)
     
-    return newxor[2]
+    newxor = addingblock(newxor)
+    
+    finalarr = [newxor[0]]
+    for i in range(1,len(newxor)):
+        finalarr.append(XORGate()(finalarr[-1], newxor[i]))
+    
+    return finalarr[-1]
     
     
 def main():
@@ -654,8 +676,9 @@ def main():
     party1 = "garbler"
     party2 = "evaluator"
     
-    #f = simple_circ(party1, party2)  #create_circ(party1, party2)
-    f = create_circ(party1, party2)
+    print("Generating initial circuit...")
+    f = create_circ(party1, party2)  #create_circ(party1, party2)
+    #f = create_circ(party1, party2)
     
     # 
     #
@@ -663,22 +686,24 @@ def main():
     #
     
 
-    cut_n_choose_lambda = 50
+    cut_n_choose_lambda = 10
     stored_circuits = []
     stored_nonces = []
     
-    
+    io = None
+    sms = None
     io = IOWrapperServer()
     sms = SysCmdStrings()
     
     
     # checking public circuit 
+    print("Hashing circuit...")
     digest = hashes.Hash(hashes.SHA256())
     digest.update(bytes(generatecircuitstructure(f, ""), 'utf-8'))
+    print("Circuit hashed")
     summaryhash = list(digest.finalize())
     summaryyaml = {}
     summaryyaml["summary"] = summaryhash  # TODO: add commitment scheme
-    #summaryyaml["nonce"] = list(copynonce)
     summarypackage = sms.makecommand(Command.checkcircuit, OT_ANNOUNCE.ot_seq, "", summaryyaml)
     io.startup()
     io.send(summarypackage)
@@ -703,17 +728,17 @@ def main():
 
         stored_circuits.append(circuitclone)
         stored_nonces.append(nonce)
-        
-    print("Establishing client contact...")
+    
+    
+    print("Waiting for client to be ready...")
     # waiting until the client is ready to receive the rows
     beginrequesting = io.receive()
     beginrequesting = sms.load_byte_to_object(beginrequesting)
     assert beginrequesting["cmd"] == Command.ready_to_receive_circuit_rows, "No receiving the circuitry"   
     
+    print("Client is ready: Sending rows...")
     
-    print("Sending rows...")
-    
-    for newc in range(cut_n_choose_lambda):
+    for newc in tqdm(range(cut_n_choose_lambda)):
         
         noncei = stored_nonces[newc]
         noncesend = sms.makecommand(cmd = Command.sending_circuit_nonce, otann=None, payloadcontext="", payload=list(noncei))
@@ -729,7 +754,9 @@ def main():
     listofcircuitstoopen = requestingcuntnchooseopening["payloadcontext"]["listofcircuitstoopen"]
     circuitweuse = requestingcuntnchooseopening["payloadcontext"]["circuitweuse"]
     
-    for op in listofcircuitstoopen:
+    print("Sending openings of requested circuits..")
+    
+    for op in tqdm(listofcircuitstoopen):
         
         circ_to_be_opened = stored_circuits[op]
         
@@ -754,6 +781,7 @@ def main():
     cutnchoosecompleted = sms.load_byte_to_object(cutnchoosecompleted)
     assert cutnchoosecompleted["cmd"] == Command.cutnchoosecompleted, "Garbler has failed to provide security"  
     
+    print("Evaluator has confirmed trust in me.")
     
     #copynonce = copy.copy(nonce)
     #fill_nonce_material(f, nonce)
@@ -769,14 +797,13 @@ def main():
 
     inputwires = getallinputwires(circ_to_be_used, [])
     
-    
+    print("Resolving OTs..")
     resolvingAllObliviousTransfers(io, inputwires, party1, party2)
+    
     
     
     print("The output wires are")
     print("'1' \t - \t "+str(circ_to_be_used.possiblelables[1]))
     print("'0' \t - \t "+str(circ_to_be_used.possiblelables[0]))
     
-
 main()
-
