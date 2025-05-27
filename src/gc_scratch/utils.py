@@ -12,8 +12,18 @@ def maketokeybytes(t):
         digest.update(t[1])
         v = digest.finalize()
     else:
-        digest.update(t[0])
+        digest.update(t)
         v = digest.finalize()
     
     return v
+
+def xoring_bytearray(bt1, bt2):
+    return bytes(a ^ b for (a, b) in zip(bt1, bt2))
+
+
+def deterministic_joining(list1, list2):
+    
+    for ll in list2:
+        if not(ll in list1):
+            list1.append(ll)
 

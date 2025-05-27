@@ -12,7 +12,7 @@ This library is supposed to be a back-to-the-roots attempt of building a library
 **Currently**, the project *gc_scratch* is:
 
 - written in python
-- semi-honest (unrealistic security guarantee)
+- supports semi-honest and malicious security (with inefficient cut&choose)
 - does not include any circuit optimisations (such as Free XOR)
 - uses native oblivious transfer (inefficient and also susceptible to further attacks)
 - requires you to explicitly define the circuit (no E2E compiler)
@@ -21,7 +21,17 @@ This library is supposed to be a back-to-the-roots attempt of building a library
 In the **future**, this project will be
 
 - maliciously secure, where the user can choose between cut-and-choose, and authenticated garbling
-- dynamically assemble circuits
+- dynamically assemble circuits (very first implementation of GRAM to my knowledgue)
 - include input validation
 - includes an interface for an adequate code-to-circuit compiler
+
+
+---
+
+### How to use
+
+1. In one console, run `python garbler.py`
+2. In another console run `python evaluator.py`
+
+
 
