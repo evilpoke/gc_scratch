@@ -12,6 +12,7 @@ from comparativecircuitry import generatecircuitstructure
 from cut_n_choose_naive import verify_functional_equality
 from decryptiongate import decryptrow
 from evaluatorpartyclass import IOWrapperClient
+from evaluatortools.evaluategates import evaluategate
 from gates import AccessRejectedGate, AndGate, DFGate, InputWire, InterWire, NotGate, OrGate, XORGate, countGates, enumerateAllGates_nonrec, fill_nonce_material, getallinputwires
 from ot import selectionselector
 from ot_bitwise import selectionselector_bitwise
@@ -137,19 +138,12 @@ def propagate_solver(wires, cG):
                 
                 # the gate t we can evaluate
                 gate = t
-                
                 returnlabel = None
-            
-                # primitive brute-force gate evaluator
-                for rowi in range(len(gate.rows)):
-                    try:
-                        returnlabel = decryptrow(gate,insvalues,rowi)
-                        pbar.update()
-                    except AccessRejectedGate as ae:
-                        continue
-                    except Exception as e:
-                        print(str(e))
-                        raise e
+                
+                returnlabel = evaluategate(gate, insvalues)
+                
+                
+                pbar.update()
 
                 assert not (returnlabel is None), "Failed to solve wire after gate " + str(gate)
             
@@ -164,32 +158,32 @@ def readRows_nonrec(io, f):
     allgates = enumerateAllGates_nonrec(inputwires)
     
     for gate in allgates:
-        
-        command = io.receive()
-        command = sms.load_byte_to_object(command)
-        listrows = command["payload"]
-        
-        if len(gate.input_gates) == 2:
+        if not isinstance(gate, XORGate):
+            command = io.receive()
+            command = sms.load_byte_to_object(command)
+            listrows = command["payload"]
             
-            newrows = [[bytes(1),bytes(1),bytes(1),bytes(1)],
-                    [bytes(1),bytes(1),bytes(1),bytes(1)],
-                    [bytes(1),bytes(1),bytes(1),bytes(1)],
-                    [bytes(1),bytes(1),bytes(1),bytes(1)]]
-            
-            for i in range(4):
-                for j in range(4):
-                    newrows[i][j] = bytes(listrows[i][j])
-                    
-        else:
-            newrows = [[bytes(1),bytes(1),bytes(1)],
-                    [bytes(1),bytes(1),bytes(1)]
-                    ]
-            
-            for i in range(2):
-                for j in range(3):
-                    newrows[i][j] = bytes(listrows[i][j])
+            if len(gate.input_gates) == 2:
+                
+                newrows = [[bytes(1),bytes(1),bytes(1),bytes(1)],
+                        [bytes(1),bytes(1),bytes(1),bytes(1)],
+                        [bytes(1),bytes(1),bytes(1),bytes(1)],
+                        [bytes(1),bytes(1),bytes(1),bytes(1)]]
+                
+                for i in range(4):
+                    for j in range(4):
+                        newrows[i][j] = bytes(listrows[i][j])
+                        
+            else:
+                newrows = [[bytes(1),bytes(1),bytes(1)],
+                        [bytes(1),bytes(1),bytes(1)]
+                        ]
+                
+                for i in range(2):
+                    for j in range(3):
+                        newrows[i][j] = bytes(listrows[i][j])
 
-        gate.rows = newrows
+            gate.rows = newrows
     
     command = io.receive()
     command = sms.load_byte_to_object(command)
@@ -344,6 +338,7 @@ def main():
     
     cut_n_choose_lambda = 10
     stored_circuits = []
+    stored_circuits_delta = []
     
     #f = simple_circ(party1, party2)  # create_circ(party1, party2)
     f = create_circ(party1, party2)
@@ -382,6 +377,7 @@ def main():
         #ff = simple_circ(party1, party2) # create_circ(party1, party2)
         ff = create_circ(party1, party2)
         stored_circuits.append(ff)
+        stored_circuits_delta.append(-1)
     
     c = Command.ready_to_receive_circuit_rows
     command = sms.makecommand(cmd = c, otann=None, payloadcontext=None, payload=None)
@@ -416,11 +412,16 @@ def main():
     askforcuntnchoose = sms.makecommand(cmd=Command.askforcutnchoosever, otann=None, payloadcontext=askcontext, payload=None)
     io.send(askforcuntnchoose)
     
+    
     print("Receiving openings of selected circuits...")
     for op in tqdm(tobeverifiedcircuits):
         circ_to_be_opened = stored_circuits[op]
-        
         tobefilledinputwires = getallinputwires(circ_to_be_opened, [])
+        
+        pay = io.receive()
+        pay = sms.load_byte_to_object(pay)
+        assert pay["cmd"] == Command.giveacutnchoose and pay["payloadcontext"] == "Delta" , "Not sent a delta"
+        stored_circuits_delta[op] = bytes(pay["payload"])
         
         for _ in range(len(tobefilledinputwires)):
             pay = io.receive()
@@ -430,6 +431,7 @@ def main():
             
             circid = payloadcontext["circuitid"]
             wireid = payloadcontext["circuitwires"]
+            
             
             possiblelables = payload
 
@@ -446,7 +448,9 @@ def main():
         
         circ_to_be_opened = stored_circuits[op]
         
-        verify_functional_equality(circ_to_be_opened)
+        DeltaKey = stored_circuits_delta[op]
+        
+        verify_functional_equality(circ_to_be_opened, DeltaKey)
         
         #print("VERIF")
     
@@ -462,14 +466,15 @@ def main():
     
     #numberofOTs = len(allInputWiresOfParty2)
     #count = countWires(f)
-    cG = countGates(f)
+    ins = getallinputwires(f) 
+    cG = countGates(ins)
     
     
     print("Resolving input wires...")
     selectingAllObliviousTransfers(f, party2, io)
     
     print("Solving circuit...")
-    ins = getallinputwires(f) 
+    
     
     propagate_solver(ins, cG)
     print("obtained value label: " + str(f.value))

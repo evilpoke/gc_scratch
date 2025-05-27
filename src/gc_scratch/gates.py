@@ -228,9 +228,9 @@ def gate_can_be_evaluated(gate):
     
     return True
 
-def countGates(finalwire):
+def countGates(ins):
     
-    allgates = enumerateAllGates_nonrec(finalwire)
+    allgates = enumerateAllGates_nonrec(ins)
     
     return len(allgates)
 
